@@ -1,0 +1,369 @@
+const REQUIRED = ['KWACHA_TREASURY', 'FOREIGN_CURRENCY', 'BANCS_TREASURY'];
+const state = {
+  token: sessionStorage.getItem('nodevault_token') || '',
+  me: null,
+  books: [],
+  book: null,
+  directory: [],
+};
+
+const loginView = document.getElementById('login-view');
+const deskView = document.getElementById('desk-view');
+
+async function api(path, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (options.body) headers['Content-Type'] = 'application/json';
+  if (state.token) headers.Authorization = `Bearer ${state.token}`;
+  const response = await fetch(path, { ...options, headers });
+  const text = await response.text();
+  const body = text ? JSON.parse(text) : null;
+  if (!response.ok) {
+    const error = new Error(body?.message || 'Request failed');
+    error.status = response.status;
+    error.body = body;
+    throw error;
+  }
+  return body;
+}
+
+function cellKey(column) {
+  return `${column.channel}|${column.code}|${column.kind}`;
+}
+
+function renderSpread(view) {
+  const table = document.getElementById('ledger');
+  const groups = view.layout.groups;
+  const headGroups = document.createElement('tr');
+  const headCols = document.createElement('tr');
+  let gutterDone = false;
+  const flat = [];
+  for (const group of groups) {
+    if (group.page === 'RIGHT' && !gutterDone) {
+      const gutter = document.createElement('th');
+      gutter.className = 'gutter';
+      gutter.rowSpan = 2;
+      headGroups.appendChild(gutter);
+      gutterDone = true;
+      flat.push({ gutter: true });
+    }
+    const groupCell = document.createElement('th');
+    groupCell.colSpan = group.columns.length;
+    groupCell.className = `group-head page-${group.page.toLowerCase()}`;
+    groupCell.textContent = group.label || '';
+    headGroups.appendChild(groupCell);
+    for (const column of group.columns) {
+      const th = document.createElement('th');
+      th.className = `page-${group.page.toLowerCase()}`;
+      const span = document.createElement('span');
+      span.className = 'ledger-th-text';
+      span.textContent = column.header;
+      th.appendChild(span);
+      headCols.appendChild(th);
+      flat.push({ ...column, page: group.page });
+    }
+  }
+  const thead = document.createElement('thead');
+  thead.append(headGroups, headCols);
+  const tbody = document.createElement('tbody');
+  if (!view.rows.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = flat.length;
+    td.textContent = 'No lines on this book yet.';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
+  for (const row of view.rows) {
+    const tr = document.createElement('tr');
+    tr.dataset.label = row.accounting_label;
+    for (const column of flat) {
+      const td = document.createElement('td');
+      if (column.gutter) {
+        td.className = 'gutter';
+        tr.appendChild(td);
+        continue;
+      }
+      td.className = `page-${column.page.toLowerCase()}`;
+      let text = '';
+      if (column.key === 'line_number' || column.key === 'line_repeat') text = String(row.line_number);
+      else if (column.key === 'date') text = row.date_display;
+      else if (column.key === 'in_or_out') text = row.in_or_out;
+      else if (column.key === 'initials') text = row.initials;
+      else {
+        text = row.displays[cellKey(column)] || '';
+        td.classList.add('dynamic-fit-value');
+      }
+      td.textContent = text;
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.replaceChildren(thead, tbody);
+  if (typeof synchronizeHorizontalMatrixLayout === 'function') {
+    synchronizeHorizontalMatrixLayout();
+  }
+}
+
+function renderPosition(view) {
+  const chips = document.getElementById('position-chips');
+  chips.replaceChildren();
+  const position = view.position;
+  if (!position) return;
+  if (position.error) {
+    chips.textContent = position.error;
+    return;
+  }
+  for (const [currency, value] of Object.entries(position)) {
+    const chip = document.createElement('span');
+    chip.textContent = `${currency} ${value.display}`;
+    chips.appendChild(chip);
+  }
+}
+
+function renderSignoff() {
+  const host = document.getElementById('signoff');
+  const custodians = state.directory.filter((user) => user.system_role === 'VAULT_CUSTODIAN');
+  const coord = state.directory.find((user) => user.system_role === 'HEAD_TELLER_COORDINATOR');
+  const people = [...custodians, coord].filter(Boolean);
+  host.replaceChildren();
+  for (const person of people) {
+    const card = document.createElement('article');
+    const title = document.createElement('h3');
+    title.textContent = person.system_role === 'HEAD_TELLER_COORDINATOR'
+      ? 'Weekly teller coordinator'
+      : 'Vault custodian';
+    const name = document.createElement('p');
+    name.textContent = person.full_legal_name;
+    const id = document.createElement('p');
+    id.textContent = `${person.employee_id} · ${person.two_letter_initials}`;
+    const line = document.createElement('div');
+    line.className = 'sig-line';
+    card.append(title, name, id, line);
+    host.appendChild(card);
+  }
+}
+
+function fillSelect(select, users, preferredRole) {
+  select.replaceChildren();
+  for (const user of users) {
+    const option = document.createElement('option');
+    option.value = user.user_id;
+    option.textContent = `${user.full_legal_name} · ${user.two_letter_initials}`;
+    if (user.system_role === preferredRole) option.selected = true;
+    select.appendChild(option);
+  }
+}
+
+async function openBook(bookId) {
+  const status = document.getElementById('desk-status');
+  status.textContent = 'Pulling the vault book…';
+  try {
+    const view = await api(`/api/books/${bookId}`);
+    state.book = view;
+    document.getElementById('book-formula').textContent = `${view.layout.instruction}. ${view.layout.formula}.`;
+    const stamp = view.book.status === 'BALANCED_CLOSED' ? ' CLOSED' : '';
+    status.textContent = `${view.layout.title} · ${view.book.business_date} · ${view.book.branch_name}${stamp}`;
+    document.getElementById('open-close').disabled = view.book.status !== 'OPEN' || !view.position || view.position.error;
+    renderSpread(view);
+    renderPosition(view);
+    for (const button of document.querySelectorAll('#book-tabs button')) {
+      button.setAttribute('aria-selected', button.dataset.bookId === String(bookId) ? 'true' : 'false');
+    }
+  } catch (error) {
+    status.textContent = error.message;
+  }
+}
+
+function renderTabs() {
+  const host = document.getElementById('book-tabs');
+  host.replaceChildren();
+  const present = new Set(state.books.map((book) => book.book_class));
+  const missing = REQUIRED.filter((code) => !present.has(code));
+  for (const book of state.books) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.bookId = book.book_id;
+    button.dataset.bookClass = book.book_class;
+    button.setAttribute('role', 'tab');
+    button.textContent = book.book_class === 'KWACHA_TREASURY'
+      ? 'Kwacha Treasury Book'
+      : book.book_class === 'FOREIGN_CURRENCY'
+        ? 'Foreign Currency Treasury Book'
+        : 'Bancs Treasury Book';
+    button.addEventListener('click', () => openBook(book.book_id));
+    host.appendChild(button);
+  }
+  if (missing.length) {
+    const note = document.createElement('p');
+    note.className = 'error';
+    note.textContent = 'This branch is missing one of the three treasury books.';
+    host.appendChild(note);
+  }
+}
+
+async function enterDesk() {
+  state.me = await api('/api/me');
+  state.books = (await api('/api/books')).books;
+  state.directory = (await api('/api/directory')).users;
+  loginView.hidden = true;
+  deskView.hidden = false;
+  document.getElementById('sign-out').hidden = false;
+  document.getElementById('bank-name').textContent = state.me.bank_name;
+  document.getElementById('session-user').textContent = `${state.me.full_legal_name} · ${state.me.system_role}`;
+  const banner = document.getElementById('maintenance-banner');
+  if (state.me.break_glass) {
+    banner.hidden = false;
+    banner.textContent = `Break-glass maintenance window open until ${new Date(state.me.break_glass_expires_at).toLocaleString()}.`;
+  } else {
+    banner.hidden = true;
+  }
+  renderTabs();
+  renderSignoff();
+  if (state.books[0]) await openBook(state.books[0].book_id);
+}
+
+function showLogin() {
+  state.token = '';
+  sessionStorage.removeItem('nodevault_token');
+  loginView.hidden = false;
+  deskView.hidden = true;
+  document.getElementById('sign-out').hidden = true;
+}
+
+document.getElementById('login-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const error = document.getElementById('login-error');
+  error.textContent = '';
+  try {
+    const result = await api('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: document.getElementById('email').value,
+        assertion: document.getElementById('assertion').value,
+      }),
+    });
+    state.token = result.token;
+    sessionStorage.setItem('nodevault_token', result.token);
+    await enterDesk();
+  } catch (err) {
+    error.textContent = err.message;
+  }
+});
+
+document.getElementById('sign-out').addEventListener('click', showLogin);
+
+document.getElementById('open-close').addEventListener('click', () => {
+  const users = state.directory;
+  const custodians = users.filter((user) => user.system_role === 'VAULT_CUSTODIAN');
+  fillSelect(document.getElementById('c1-id'), custodians, 'VAULT_CUSTODIAN');
+  fillSelect(document.getElementById('c2-id'), custodians, 'VAULT_CUSTODIAN');
+  if (custodians[1]) document.getElementById('c2-id').value = custodians[1].user_id;
+  fillSelect(
+    document.getElementById('coord-id'),
+    users.filter((user) => user.system_role === 'HEAD_TELLER_COORDINATOR'),
+    'HEAD_TELLER_COORDINATOR',
+  );
+  const position = state.book?.position || {};
+  const bits = Object.entries(position).filter((entry) => entry[0] !== 'error').map(([currency, value]) => `${currency} ${value.display}`);
+  document.getElementById('close-summary').textContent = bits.join(' · ');
+  document.getElementById('close-error').textContent = '';
+  document.getElementById('close-dialog').showModal();
+});
+
+document.getElementById('close-cancel').addEventListener('click', () => {
+  document.getElementById('close-dialog').close();
+});
+
+document.getElementById('close-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const error = document.getElementById('close-error');
+  error.textContent = '';
+  const position = {};
+  for (const [currency, value] of Object.entries(state.book.position)) {
+    if (currency === 'error') continue;
+    position[currency] = value.decimal;
+  }
+  try {
+    const result = await api(`/api/books/${state.book.book.book_id}/close`, {
+      method: 'POST',
+      body: JSON.stringify({
+        c1_id: Number(document.getElementById('c1-id').value),
+        c1_pin: document.getElementById('c1-pin').value,
+        c2_id: Number(document.getElementById('c2-id').value),
+        c2_pin: document.getElementById('c2-pin').value,
+        coord_id: Number(document.getElementById('coord-id').value),
+        coord_pin: document.getElementById('coord-pin').value,
+        operating_date: state.book.book.business_date,
+        calculated_matrix_cash_total: position,
+      }),
+    });
+    document.getElementById('close-dialog').close();
+    const failed = (result.dispatch || []).filter((item) => item.status === 'FAILED');
+    document.getElementById('desk-status').textContent = failed.length
+      ? 'Book locked. Printer or email needs a retry; the close itself stands.'
+      : 'Book locked. Closing sheet sent to the printer and both custodians.';
+    await openBook(state.book.book.book_id);
+  } catch (err) {
+    error.textContent = err.message;
+  }
+});
+
+document.getElementById('show-break-glass').addEventListener('click', () => {
+  document.getElementById('glass-error').textContent = '';
+  document.getElementById('glass-dialog').showModal();
+});
+document.getElementById('glass-cancel').addEventListener('click', () => {
+  document.getElementById('glass-dialog').close();
+});
+document.getElementById('glass-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const error = document.getElementById('glass-error');
+  error.textContent = '';
+  try {
+    const result = await api('/api/auth/break-glass', {
+      method: 'POST',
+      body: JSON.stringify({
+        admin_email: document.getElementById('glass-admin-email').value,
+        admin_assertion: document.getElementById('glass-admin-assertion').value,
+        custodian_one_email: document.getElementById('glass-c1-email').value,
+        custodian_one_assertion: document.getElementById('glass-c1-assertion').value,
+        custodian_two_email: document.getElementById('glass-c2-email').value,
+        custodian_two_assertion: document.getElementById('glass-c2-assertion').value,
+      }),
+    });
+    state.token = result.token;
+    sessionStorage.setItem('nodevault_token', result.token);
+    document.getElementById('glass-dialog').close();
+    await enterDesk();
+  } catch (err) {
+    error.textContent = err.message;
+  }
+});
+
+async function boot() {
+  try {
+    const config = await api('/api/public-config');
+    document.getElementById('domain-hint').textContent = config.enforcedDomain
+      ? `Microsoft Entra sign-in is restricted to @${config.enforcedDomain}.`
+      : 'Microsoft Entra sign-in is restricted to each bank tenant domain.';
+    if (config.entraMode === 'mock') {
+      const directory = await api('/api/auth/demo-directory');
+      const list = document.getElementById('demo-directory');
+      for (const user of directory.users) {
+        const item = document.createElement('li');
+        item.textContent = `${user.full_legal_name} · ${user.work_email} · ${user.system_role}`;
+        list.appendChild(item);
+      }
+    }
+  } catch (_error) {
+    document.getElementById('login-error').textContent = 'The desk configuration could not be read.';
+  }
+  if (!state.token) return;
+  try {
+    await enterDesk();
+  } catch (_error) {
+    showLogin();
+  }
+}
+
+boot();

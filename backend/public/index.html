@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NodeVault · Treasury desk</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect fill='%23102833' width='32' height='32'/%3E%3Ctext x='4' y='22' fill='%23e7f3f8' font-size='14' font-family='Georgia'%3ENV%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="mast">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">NV</span>
+      <div>
+        <p class="eyebrow">NodeLink Systems Limited</p>
+        <h1>NodeVault</h1>
+      </div>
+    </div>
+    <div class="mast-meta">
+      <p id="bank-name"></p>
+      <p id="session-user"></p>
+      <button type="button" id="sign-out" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="login-view" class="panel">
+      <div class="login-copy">
+        <p class="kicker">Branch treasury desk</p>
+        <h2>Three books. One close.</h2>
+        <p>Kwacha, foreign currency, and Bancs. Values, not pieces. The book locks only when both vault custodians and the weekly coordinator sign, and the core position matches to the ngwee.</p>
+      </div>
+      <form id="login-form" class="card">
+        <h3>Corporate sign-in</h3>
+        <p class="hint" id="domain-hint"></p>
+        <label for="email">Work email</label>
+        <input id="email" name="email" type="email" autocomplete="username" required placeholder="name@demo-bank.example">
+        <label for="assertion">Entra assertion</label>
+        <input id="assertion" name="assertion" type="password" autocomplete="current-password" required>
+        <p id="login-error" class="error" role="alert"></p>
+        <button type="submit">Enter the desk</button>
+        <button type="button" id="show-break-glass" class="ghost">Emergency break-glass</button>
+        <ul id="demo-directory" class="directory"></ul>
+      </form>
+    </section>
+
+    <section id="desk-view" hidden>
+      <div id="maintenance-banner" class="banner" hidden></div>
+      <div class="desk-bar">
+        <div id="book-tabs" class="book-tabs" role="tablist" aria-label="Treasury books"></div>
+        <button type="button" id="open-close" disabled>Three-person close</button>
+      </div>
+      <p id="desk-status" class="status" role="status"></p>
+      <p id="book-formula" class="formula"></p>
+      <div id="position-chips" class="chips"></div>
+      <div class="ledger-scroll">
+        <table class="ledger-table" id="ledger"></table>
+      </div>
+      <section id="signoff" class="signoff" aria-label="Closing sign-off"></section>
+    </section>
+  </main>
+
+  <dialog id="close-dialog">
+    <form id="close-form" method="dialog">
+      <h3>Nightly triple sign-off</h3>
+      <p id="close-summary"></p>
+      <div class="pin-grid">
+        <label>Custodian 1<select id="c1-id" required></select><input id="c1-pin" type="password" inputmode="numeric" autocomplete="off" required placeholder="Closing PIN"></label>
+        <label>Custodian 2<select id="c2-id" required></select><input id="c2-pin" type="password" inputmode="numeric" autocomplete="off" required placeholder="Closing PIN"></label>
+        <label>Weekly coordinator<select id="coord-id" required></select><input id="coord-pin" type="password" inputmode="numeric" autocomplete="off" required placeholder="Closing PIN"></label>
+      </div>
+      <p id="close-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button type="button" id="close-cancel" class="ghost">Cancel</button>
+        <button type="submit">Lock the book</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="glass-dialog">
+    <form id="glass-form" method="dialog">
+      <h3>Break-glass maintenance</h3>
+      <p>The IT super admin stays frozen until both active vault custodians authenticate together. The window expires after 60 minutes.</p>
+      <label>IT super admin email<input id="glass-admin-email" type="email" required></label>
+      <label>Admin assertion<input id="glass-admin-assertion" type="password" required></label>
+      <label>Custodian 1 email<input id="glass-c1-email" type="email" required></label>
+      <label>Custodian 1 assertion<input id="glass-c1-assertion" type="password" required></label>
+      <label>Custodian 2 email<input id="glass-c2-email" type="email" required></label>
+      <label>Custodian 2 assertion<input id="glass-c2-assertion" type="password" required></label>
+      <p id="glass-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button type="button" id="glass-cancel" class="ghost">Cancel</button>
+        <button type="submit">Open 60-minute window</button>
+      </div>
+    </form>
+  </dialog>
+
+  <footer>
+    <p>NodeVault · Charles Amulike · NodeLink Systems Limited</p>
+  </footer>
+  <script src="/layout-scale.js" defer></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>
