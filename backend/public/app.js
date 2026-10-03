@@ -238,6 +238,242 @@ function renderRotation(rotation) {
   }
 }
 
+function field(labelText, control) {
+  const label = document.createElement('label');
+  label.textContent = labelText;
+  label.appendChild(control);
+  return label;
+}
+
+function renderCalendar(calendar) {
+  const host = document.getElementById('calendar-panel');
+  host.replaceChildren();
+  const title = document.createElement('h3');
+  title.textContent = 'Non-working days';
+  const note = document.createElement('p');
+  note.className = 'hint';
+  const banner = calendar.nonWorking
+    ? `Today is not a working day (${calendar.nonWorking.name}). No new book opens.`
+    : 'Zambian public holidays, gazetted days, and closures set by the regional operations manager.';
+  note.textContent = banner;
+  host.append(title, note);
+
+  const list = document.createElement('ul');
+  list.className = 'calendar-list';
+  const items = [];
+  for (const holiday of calendar.holidays || []) {
+    const label = holiday.observance === 'SUNDAY_FOLLOWING'
+      ? `${holiday.name} (observed Monday)`
+      : holiday.name;
+    items.push({ date: holiday.date, label, kind: 'Public holiday' });
+  }
+  for (const holiday of calendar.gazetted || []) {
+    if (holiday.cancelled) continue;
+    items.push({ date: holiday.date, label: holiday.name, kind: 'Gazetted' });
+  }
+  for (const closure of calendar.closures || []) {
+    if (closure.cancelled || !closure.appliesHere) continue;
+    const span = closure.startDate === closure.endDate
+      ? closure.startDate
+      : `${closure.startDate} to ${closure.endDate}`;
+    items.push({ date: closure.startDate, label: `${closure.reason} · ${span}`, kind: closure.scope });
+  }
+  items.sort((a, b) => a.date.localeCompare(b.date) || a.label.localeCompare(b.label));
+  if (!items.length) {
+    const empty = document.createElement('li');
+    empty.textContent = 'No public holiday or closure in the next four months.';
+    list.appendChild(empty);
+  }
+  for (const item of items) {
+    const li = document.createElement('li');
+    const when = document.createElement('time');
+    when.dateTime = item.date;
+    when.textContent = item.date;
+    const text = document.createElement('span');
+    text.textContent = `${item.label} · ${item.kind}`;
+    li.append(when, text);
+    list.appendChild(li);
+  }
+  host.appendChild(list);
+
+  if (!calendar.canManage) return;
+  const forms = document.createElement('div');
+  forms.className = 'calendar-forms';
+  forms.append(closureForm(calendar), gazetteForm());
+  const pending = (calendar.closures || []).filter((row) => row.cancellable);
+  const gazettes = (calendar.gazetted || []).filter((row) => row.cancellable);
+  if (pending.length || gazettes.length) {
+    const manage = document.createElement('div');
+    const heading = document.createElement('h3');
+    heading.textContent = 'Cancel before the date';
+    manage.appendChild(heading);
+    for (const row of pending) {
+      manage.appendChild(cancelLine(
+        `${row.startDate}–${row.endDate} · ${row.reason}`,
+        () => api(`/api/calendar/closures/${row.closureId}/cancel`, { method: 'POST', body: '{}' }),
+      ));
+    }
+    for (const row of gazettes) {
+      manage.appendChild(cancelLine(
+        `${row.date} · ${row.name}`,
+        () => api(`/api/calendar/gazetted/${row.holidayId}/cancel`, { method: 'POST', body: '{}' }),
+      ));
+    }
+    forms.appendChild(manage);
+  }
+  host.appendChild(forms);
+}
+
+function cancelLine(label, action) {
+  const row = document.createElement('p');
+  const text = document.createElement('span');
+  text.textContent = label;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'cancel';
+  button.textContent = 'Cancel';
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      await action();
+      await enterDesk();
+    } catch (error) {
+      button.disabled = false;
+      text.textContent = error.message;
+    }
+  });
+  row.append(text, button);
+  return row;
+}
+
+function closureForm(calendar) {
+  const form = document.createElement('form');
+  const heading = document.createElement('h3');
+  heading.textContent = 'Set a closure';
+  const scope = document.createElement('select');
+  for (const [value, label] of [
+    ['TENANT', 'All branches'],
+    ['PROVINCE', 'One province'],
+    ['LOCATION', 'One location'],
+    ['BRANCH', 'Selected branches'],
+  ]) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    scope.appendChild(option);
+  }
+  const province = document.createElement('input');
+  province.placeholder = 'Province';
+  const location = document.createElement('input');
+  location.placeholder = 'Location';
+  const picks = document.createElement('div');
+  picks.className = 'branch-picks';
+  for (const branch of calendar.branches || []) {
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.value = branch.branchId;
+    const label = document.createElement('label');
+    label.append(box, document.createTextNode(` ${branch.branchCode} ${branch.branchName}`));
+    picks.appendChild(label);
+  }
+  const start = document.createElement('input');
+  start.type = 'date';
+  start.required = true;
+  const end = document.createElement('input');
+  end.type = 'date';
+  end.required = true;
+  const reason = document.createElement('input');
+  reason.required = true;
+  reason.maxLength = 400;
+  reason.placeholder = 'Why the bank is closed';
+  const error = document.createElement('p');
+  error.className = 'error';
+  const button = document.createElement('button');
+  button.type = 'submit';
+  button.textContent = 'Declare closure';
+  form.append(
+    heading,
+    field('Scope', scope),
+    field('Province', province),
+    field('Location', location),
+    picks,
+    field('From', start),
+    field('To', end),
+    field('Reason', reason),
+    error,
+    button,
+  );
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    error.textContent = '';
+    const branchIds = [...picks.querySelectorAll('input:checked')].map((box) => Number(box.value));
+    try {
+      await api('/api/calendar/closures', {
+        method: 'POST',
+        body: JSON.stringify({
+          scope: scope.value,
+          province: province.value,
+          location_name: location.value,
+          branch_ids: branchIds,
+          start_date: start.value,
+          end_date: end.value,
+          reason: reason.value,
+        }),
+      });
+      await enterDesk();
+    } catch (err) {
+      error.textContent = err.message;
+    }
+  });
+  return form;
+}
+
+function gazetteForm() {
+  const form = document.createElement('form');
+  const heading = document.createElement('h3');
+  heading.textContent = 'Gazetted holiday';
+  const date = document.createElement('input');
+  date.type = 'date';
+  date.required = true;
+  const name = document.createElement('input');
+  name.required = true;
+  name.maxLength = 160;
+  name.placeholder = 'Name on the gazette';
+  const reference = document.createElement('input');
+  reference.placeholder = 'Gazette reference';
+  const error = document.createElement('p');
+  error.className = 'error';
+  const button = document.createElement('button');
+  button.type = 'submit';
+  button.textContent = 'Add national holiday';
+  form.append(
+    heading,
+    field('Date', date),
+    field('Name', name),
+    field('Gazette reference', reference),
+    error,
+    button,
+  );
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    error.textContent = '';
+    try {
+      await api('/api/calendar/gazetted', {
+        method: 'POST',
+        body: JSON.stringify({
+          holiday_date: date.value,
+          name: name.value,
+          gazette_reference: reference.value,
+        }),
+      });
+      await enterDesk();
+    } catch (err) {
+      error.textContent = err.message;
+    }
+  });
+  return form;
+}
+
 function renderFlags(flags) {
   const host = document.getElementById('carry-flags');
   const reasons = {
@@ -368,6 +604,7 @@ async function enterDesk() {
   } else {
     banner.hidden = true;
   }
+  renderCalendar(desk.calendar || {});
   renderRotation(desk.rotation || { posts: [] });
   renderFlags(desk.carryFlags);
   renderHandover(desk.rotation || { due: [] }, desk.deskOpen);

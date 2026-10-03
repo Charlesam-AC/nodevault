@@ -10,6 +10,7 @@ const {
   previousBusinessDay,
   zonedParts,
 } = require('./calendar');
+const { optionsForBranch } = require('./closures');
 const { BOOK_ORDER } = require('./books');
 
 const POSTS = [
@@ -206,7 +207,10 @@ async function captureHandover(db, {
     throw new VaultError('HANDOVER_POSTS', 'The handover must name every post that starts on the effective date', 400);
   }
 
-  const priorDate = previousBusinessDay(effectiveDate, calendarOptions());
+  const priorDate = previousBusinessDay(
+    effectiveDate,
+    await optionsForBranch(db, tenantId, branchId, { anchorDate: effectiveDate }),
+  );
   const balances = await lockedCarrySnapshot(db, tenantId, branchId, priorDate);
   const captured = [];
   for (const item of expected) {

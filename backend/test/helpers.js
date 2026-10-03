@@ -56,6 +56,11 @@ async function setupPools() {
 async function resetDatabase() {
   await adminPool.query(`
     DROP TABLE IF EXISTS
+      gazetted_holiday_cancellations,
+      gazetted_holidays,
+      non_working_closure_cancellations,
+      non_working_closure_branches,
+      non_working_closures,
       post_assignments,
       handover_logs,
       carry_forward_flags,
@@ -80,6 +85,8 @@ async function resetDatabase() {
     DROP FUNCTION IF EXISTS nodevault_guard_book() CASCADE;
     DROP FUNCTION IF EXISTS nodevault_verify_entry_arithmetic() CASCADE;
     DROP FUNCTION IF EXISTS nodevault_reject_handover_mutation() CASCADE;
+    DROP FUNCTION IF EXISTS nodevault_reject_calendar_mutation() CASCADE;
+    DROP TYPE IF EXISTS nodevault_closure_scope CASCADE;
     DROP TYPE IF EXISTS nodevault_user_role CASCADE;
     DROP TYPE IF EXISTS nodevault_book_class CASCADE;
     DROP TYPE IF EXISTS nodevault_book_status CASCADE;
@@ -96,8 +103,8 @@ async function createDesk(pinHash, options = {}) {
   );
   const tenantId = tenant.rows[0].tenant_id;
   const branch = await db.query(
-    `INSERT INTO branches (tenant_id, branch_code, branch_name)
-     VALUES ($1, 'MB01', 'Main Branch') RETURNING branch_id`,
+    `INSERT INTO branches (tenant_id, branch_code, branch_name, province, location_name)
+     VALUES ($1, 'MB01', 'Main Branch', 'Lusaka', 'Lusaka') RETURNING branch_id`,
     [tenantId],
   );
   const branchId = branch.rows[0].branch_id;

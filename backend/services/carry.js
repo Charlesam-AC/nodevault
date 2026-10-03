@@ -2,11 +2,8 @@ const { BOOK_ORDER } = require('./books');
 const { recordAudit } = require('./audit');
 const { loadRows, amountsFromCells, insertLedgerRow, positionByCurrency } = require('./ledger');
 const { holdersForDate } = require('./rotation');
-const {
-  calendarOptions,
-  businessMorning,
-  previousBusinessDay,
-} = require('./calendar');
+const { optionsForBranch } = require('./closures');
+const { businessMorning, previousBusinessDay } = require('./calendar');
 
 const TITLES = {
   KWACHA_TREASURY: 'Kwacha Treasury Book',
@@ -156,7 +153,7 @@ async function carryOne(db, {
 }
 
 async function carryForwardBranch(db, tenantId, branchId, now = new Date(), overrides = {}) {
-  const options = calendarOptions(overrides);
+  const options = await optionsForBranch(db, tenantId, branchId, { ...overrides, now });
   const businessDate = businessMorning(now, options);
   if (!businessDate) {
     return { businessDate: null, results: [], skipped: 'NOT_A_BUSINESS_MORNING' };

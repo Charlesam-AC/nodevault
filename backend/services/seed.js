@@ -43,12 +43,17 @@ async function seedDemo(db) {
   );
   const tenantId = tenant.rows[0].tenant_id;
   const branch = await db.query(
-    `INSERT INTO branches (tenant_id, branch_code, branch_name)
-     VALUES ($1, 'MB01', 'Main Branch')
+    `INSERT INTO branches (tenant_id, branch_code, branch_name, province, location_name)
+     VALUES ($1, 'MB01', 'Main Branch', 'Lusaka', 'Lusaka')
      RETURNING branch_id`,
     [tenantId],
   );
   const branchId = branch.rows[0].branch_id;
+  await db.query(
+    `INSERT INTO branches (tenant_id, branch_code, branch_name, province, location_name)
+     VALUES ($1, 'CB01', 'Kitwe Branch', 'Copperbelt', 'Kitwe')`,
+    [tenantId],
+  );
 
   const people = [
     ['charles.amulike@demo-bank.example', 'Charles Amulike', 'CUST-0149', 'C.A.', 'VAULT_CUSTODIAN'],

@@ -7,8 +7,16 @@ const { VaultError } = require('./services/errors');
 const { syncCatalogue } = require('./services/catalogue');
 const { seedDemo } = require('./services/seed');
 const { listBooks } = require('./services/books');
-const { businessMorning, calendarOptions } = require('./services/calendar');
+const { businessMorning, isBusinessDay, zonedParts } = require('./services/calendar');
 const { carryForwardBranch, listCarryFlags } = require('./services/carry');
+const {
+  optionsForBranch,
+  calendarDesk,
+  declareClosure,
+  cancelClosure,
+  declareGazetted,
+  cancelGazetted,
+} = require('./services/closures');
 const { holdersForDate, rotationView, captureHandover } = require('./services/rotation');
 const { getBookView, insertLedgerRow } = require('./services/ledger');
 const { executeThreePersonVaultLock, dispatchClosing } = require('./services/closing');
@@ -147,6 +155,26 @@ function buildApp(db) {
     res.json(desk);
   }));
 
+  app.post('/api/calendar/closures', guard, asyncRoute(async (req, res) => {
+    const created = await declareClosure(db, req.user, req.body);
+    res.status(201).json(created);
+  }));
+
+  app.post('/api/calendar/closures/:closureId/cancel', guard, asyncRoute(async (req, res) => {
+    const cancelled = await cancelClosure(db, req.user, req.params.closureId);
+    res.json(cancelled);
+  }));
+
+  app.post('/api/calendar/gazetted', guard, asyncRoute(async (req, res) => {
+    const created = await declareGazetted(db, req.user, req.body);
+    res.status(201).json(created);
+  }));
+
+  app.post('/api/calendar/gazetted/:holidayId/cancel', guard, asyncRoute(async (req, res) => {
+    const cancelled = await cancelGazetted(db, req.user, req.params.holidayId);
+    res.json(cancelled);
+  }));
+
   app.post('/api/rotation/handover', guard, asyncRoute(async (req, res) => {
     const branchId = req.user.branchId;
     if (!branchId) throw new VaultError('NO_BRANCH', 'This profile is not attached to a branch', 409);
@@ -258,7 +286,7 @@ async function prepareDesk(db, user, now = new Date()) {
   const tenantId = user.tenantId;
   const branchId = user.branchId;
   if (!branchId) throw new VaultError('NO_BRANCH', 'This profile is not attached to a branch', 409);
-  const options = calendarOptions();
+  const options = await optionsForBranch(db, tenantId, branchId, { now });
   const morning = businessMorning(now, options);
   const gate = morning
     ? await holdersForDate(db, tenantId, branchId, morning)
@@ -275,6 +303,11 @@ async function prepareDesk(db, user, now = new Date()) {
   const carryFlags = businessDate
     ? await listCarryFlags(db, tenantId, branchId, businessDate)
     : [];
+  const today = zonedParts(now, options.timeZone).isoDate;
+  const calendar = await calendarDesk(db, tenantId, branchId, user, now);
+  if (!isBusinessDay(today, options) && !calendar.nonWorking) {
+    calendar.nonWorking = { date: today, name: 'Not a trading day' };
+  }
   return {
     businessDate,
     deskOpen,
@@ -282,6 +315,7 @@ async function prepareDesk(db, user, now = new Date()) {
     books,
     rotation,
     carryFlags,
+    calendar,
   };
 }
 

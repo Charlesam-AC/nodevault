@@ -18,7 +18,17 @@ Grand Total = Total Re-Issuable + Total Coins. There is no Old Currency Notes co
 
 ## Business morning and carry-forward
 
-At `BUSINESS_DAY_START` in `BUSINESS_TIMEZONE` (default 08:00 Africa/Lusaka) the desk opens that trading date. Trading days default to Monday through Saturday (`TRADING_WEEKDAYS`). Sundays and dates listed in `BANK_HOLIDAYS` are skipped. For each of the three books, that morning copies the previous trading day's locked Bal c/d into a new book's first line, labelled Bal b/f, denomination by denomination. Friday rolls to Saturday. Saturday rolls to Monday, unless Monday is a holiday, in which case it rolls to the next trading morning. The copy runs only after the prior book is `BALANCED_CLOSED`. An open or missing prior book is flagged (`carry_forward_flags` and a `CARRY_FORWARD_BLOCKED` audit) and is not posted. Running the job again does not add a second line.
+At `BUSINESS_DAY_START` in `BUSINESS_TIMEZONE` (default 08:00 Africa/Lusaka) the desk opens that trading date. Trading days default to Monday through Saturday (`TRADING_WEEKDAYS`). Sundays, Zambian public holidays, dates listed in `BANK_HOLIDAYS`, and bank closures are skipped. For each of the three books, that morning copies the previous trading day's locked Bal c/d into a new book's first line, labelled Bal b/f, denomination by denomination. Friday rolls to Saturday. A holiday or closure in between is stepped over. The copy runs only after the prior book is `BALANCED_CLOSED`. An open or missing prior book is flagged (`carry_forward_flags` and a `CARRY_FORWARD_BLOCKED` audit) and is not posted. Running the job again does not add a second line.
+
+## Non-working days
+
+The regional operations manager sets closures. The IT super admin stays frozen after setup and cannot do this, including during break-glass. A closure has a start and end date, a reason, the person who set it, and the time it was set. Scope is the whole bank, one province, one location, or selected branches. Main Branch is Lusaka; Kitwe Branch is Copperbelt, so a province closure can be tried against either.
+
+A closure has to start on a future date. It is refused when any covered branch already has a book that day, open or closed. Cancellation is allowed only before the start date. The original row stays. A cancellation row and a `CLOSURE_CANCELLED` audit event are appended. Nothing in this calendar is deleted.
+
+Public holidays come from the Public Holidays Act, Cap. 272, plus the annual days declared under section 3. When a holiday falls on a Sunday, the following Monday is closed (section 2(2)). A Saturday holiday stays on Saturday. Kenneth Kaunda Day is 28 April (Statutory Instrument No. 72 of 2021), not the last Monday of April. The 2026 bill that would have dropped the Monday observance was not enacted. The regional operations manager can also record a one-off gazetted holiday for the whole bank. `BANK_HOLIDAYS` still adds extra dates on top.
+
+The desk lists the next four months of holidays and the closures that apply to the branch.
 
 Bal c/d itself is still the certified last line the three-person close checks. It is not rewritten during the day. The automatic roll is the next morning's Bal b/f.
 
@@ -50,7 +60,7 @@ docker compose up --build
 
 The API and the desk are at [http://127.0.0.1:8080](http://127.0.0.1:8080). Postgres is published on port 54329 for the test suite. `docker compose up` is healthy when both `nodevault-api` and `nodevault-db` report healthy.
 
-A volume created before directory passwords existed does not have `password_hash`. Recreate it with `docker compose down -v && docker compose up --build`.
+A volume created before directory passwords existed does not have `password_hash`. A volume created before non-working days does not have the closure tables. Recreate it with `docker compose down -v && docker compose up --build`, or apply `database/03-working-calendar.sql` on the existing database.
 
 Demo sign-in (only when `SEED_DEMO_DATA=true`):
 
@@ -109,7 +119,7 @@ Copy `.env.example`. Do not commit `.env`.
 | `LOCAL_LOGIN_MAX_FAILURES` / `LOCAL_LOGIN_LOCKOUT_MINUTES` | Lock an account after repeated wrong passwords |
 | `BUSINESS_TIMEZONE` / `BUSINESS_DAY_START` | When the next business morning begins. Default Africa/Lusaka 08:00 |
 | `TRADING_WEEKDAYS` | Days the desk opens. Default `Mon,Tue,Wed,Thu,Fri,Sat`. Sunday is closed unless named here |
-| `BANK_HOLIDAYS` | Comma-separated dates the carry-forward skips, in addition to non-trading weekdays |
+| `BANK_HOLIDAYS` | Extra comma-separated dates, added on top of the Zambian public-holiday calendar |
 | `MOCK_ENTRA_ASSERTION` | Shared local stand-in for an Entra sign-in |
 | `CORE_BANK_MODE` | `mock` reads `mock_core_positions`. `http` GETs `${CORE_BANK_API_URL}/v1/position/:branchId` |
 | `CORE_BANK_API_URL` | Core banking base URL. Amounts must be decimal strings, not JSON numbers |
@@ -140,7 +150,9 @@ Copy `.env.example`. Do not commit `.env`.
 - Silent printing is a server-side dispatch after commit (`PRINTER_MODE=stub` or `network`). It does not run inside the browser.
 - Bancs has no separate photographed sheet, so it reuses the foreign-notes layout on its own book.
 - A branch holds one book of each of the three classes per business date.
-- Carry-forward treats Saturday as a trading day. Only Sunday, any weekday omitted from `TRADING_WEEKDAYS`, and `BANK_HOLIDAYS` are skipped. The seeded 3 October 2026 sample is Saturday's locked Bal c/d and the source of Monday 5 October's Bal b/f. Friday's locked Bal c/d is the source of Saturday's Bal b/f.
+- Carry-forward treats Saturday as a trading day. Sunday, any weekday omitted from `TRADING_WEEKDAYS`, the Zambian public-holiday calendar, `BANK_HOLIDAYS`, and closures for that branch are skipped. The seeded 3 October 2026 sample is Saturday's locked Bal c/d and the source of Monday 5 October's Bal b/f. Friday's locked Bal c/d is the source of Saturday's Bal b/f. Monday 5 October 2026 is not a public holiday.
+- Kenneth Kaunda Day is 28 April. Heroes Day stays the first Monday in July and Unity Day the Tuesday after it, unless a later gazette moves them. A moved day is entered as a gazetted holiday; this build does not delete the statutory Monday on its own.
+- Zambia does not observe Boxing Day. Easter Monday is included because the annual gazette lists it; the Schedule consolidated to 1996 stops at Holy Saturday.
 - Incoming holders must already be active directory users of the right role. The handover checks the employee ID and initials the desk submits against that directory row.
 - Custodian seats in the demo are fortnightly, so they do not change on the same Monday as the weekly coordinator. The desk blocks only the posts whose new period has started without an assignment.
 - The first seeded period is the opening roster. Later periods are created by handover, not by editing old ledger lines.
