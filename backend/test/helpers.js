@@ -88,7 +88,7 @@ async function resetDatabase() {
   await syncCatalogue(applicationPool);
 }
 
-async function createDesk(pinHash) {
+async function createDesk(pinHash, options = {}) {
   const db = applicationPool;
   const tenant = await db.query(
     `INSERT INTO bank_tenants (bank_name, corporate_domain)
@@ -151,17 +151,18 @@ async function createDesk(pinHash) {
       [tenantId, branchId, postCode, userId],
     );
   }
-  const books = {
-    KWACHA_TREASURY: await createBookWithRows(db, {
+  const books = {};
+  if (options.withBooks !== false) {
+    books.KWACHA_TREASURY = await createBookWithRows(db, {
       tenantId, branchId, bookClass: 'KWACHA_TREASURY', businessDate: DATE, rows: kwachaRows,
-    }),
-    FOREIGN_CURRENCY: await createBookWithRows(db, {
+    });
+    books.FOREIGN_CURRENCY = await createBookWithRows(db, {
       tenantId, branchId, bookClass: 'FOREIGN_CURRENCY', businessDate: DATE, rows: foreignRows,
-    }),
-    BANCS_TREASURY: await createBookWithRows(db, {
+    });
+    books.BANCS_TREASURY = await createBookWithRows(db, {
       tenantId, branchId, bookClass: 'BANCS_TREASURY', businessDate: DATE, rows: bancsRows,
-    }),
-  };
+    });
+  }
   return { tenantId, branchId, users, books, pin: '135790' };
 }
 

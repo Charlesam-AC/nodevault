@@ -1,4 +1,34 @@
 const WEEKDAYS = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+const WEEKDAY_TOKENS = {
+  sun: 0, sunday: 0,
+  mon: 1, monday: 1,
+  tue: 2, tues: 2, tuesday: 2,
+  wed: 3, wednesday: 3,
+  thu: 4, thur: 4, thurs: 4, thursday: 4,
+  fri: 5, friday: 5,
+  sat: 6, saturday: 6,
+};
+const DEFAULT_TRADING_WEEKDAYS = [1, 2, 3, 4, 5, 6];
+
+function parseTradingWeekdays(value) {
+  if (value == null || value === '') return DEFAULT_TRADING_WEEKDAYS.slice();
+  const tokens = Array.isArray(value) ? value : String(value).split(',');
+  const days = [];
+  for (const token of tokens) {
+    const text = String(token).trim().toLowerCase();
+    if (!text) continue;
+    if (/^[0-6]$/.test(text)) {
+      days.push(Number(text));
+      continue;
+    }
+    if (!Object.prototype.hasOwnProperty.call(WEEKDAY_TOKENS, text)) {
+      throw new TypeError(`unknown trading weekday ${token}`);
+    }
+    days.push(WEEKDAY_TOKENS[text]);
+  }
+  if (days.length === 0) throw new TypeError('TRADING_WEEKDAYS is empty');
+  return [...new Set(days)];
+}
 
 function calendarOptions(overrides = {}) {
   const holidays = Object.prototype.hasOwnProperty.call(overrides, 'holidays')
@@ -7,10 +37,14 @@ function calendarOptions(overrides = {}) {
       .split(',')
       .map((day) => day.trim())
       .filter(Boolean);
+  const tradingSource = Object.prototype.hasOwnProperty.call(overrides, 'tradingWeekdays')
+    ? overrides.tradingWeekdays
+    : process.env.TRADING_WEEKDAYS;
   return {
     timeZone: overrides.timeZone || process.env.BUSINESS_TIMEZONE || 'Africa/Lusaka',
     dayStart: overrides.dayStart || process.env.BUSINESS_DAY_START || '08:00',
     holidays,
+    tradingWeekdays: parseTradingWeekdays(tradingSource),
   };
 }
 
@@ -75,26 +109,40 @@ function startMinutes(dayStart) {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
-function isBusinessDay(isoDate, holidays) {
-  const { year, month, day } = parseIso(isoDate);
-  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-  if (weekday === 0 || weekday === 6) return false;
-  return !(holidays || []).includes(isoDate);
+function dayContext(optionsOrHolidays) {
+  if (Array.isArray(optionsOrHolidays)) {
+    return { holidays: optionsOrHolidays, tradingWeekdays: DEFAULT_TRADING_WEEKDAYS };
+  }
+  const options = optionsOrHolidays || {};
+  return {
+    holidays: options.holidays || [],
+    tradingWeekdays: options.tradingWeekdays && options.tradingWeekdays.length
+      ? parseTradingWeekdays(options.tradingWeekdays)
+      : DEFAULT_TRADING_WEEKDAYS,
+  };
 }
 
-function previousBusinessDay(isoDate, holidays) {
+function isBusinessDay(isoDate, optionsOrHolidays) {
+  const { holidays, tradingWeekdays } = dayContext(optionsOrHolidays);
+  const { year, month, day } = parseIso(isoDate);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  if (!tradingWeekdays.includes(weekday)) return false;
+  return !holidays.includes(isoDate);
+}
+
+function previousBusinessDay(isoDate, optionsOrHolidays) {
   let cursor = addDays(isoDate, -1);
   for (let i = 0; i < 370; i += 1) {
-    if (isBusinessDay(cursor, holidays)) return cursor;
+    if (isBusinessDay(cursor, optionsOrHolidays)) return cursor;
     cursor = addDays(cursor, -1);
   }
   throw new Error('no previous business day');
 }
 
-function nextBusinessDay(isoDate, holidays) {
+function nextBusinessDay(isoDate, optionsOrHolidays) {
   let cursor = addDays(isoDate, 1);
   for (let i = 0; i < 370; i += 1) {
-    if (isBusinessDay(cursor, holidays)) return cursor;
+    if (isBusinessDay(cursor, optionsOrHolidays)) return cursor;
     cursor = addDays(cursor, 1);
   }
   throw new Error('no next business day');
@@ -104,7 +152,7 @@ function nextBusinessDay(isoDate, holidays) {
 function businessMorning(now, overrides = {}) {
   const options = calendarOptions(overrides);
   const zoned = zonedParts(now, options.timeZone);
-  if (!isBusinessDay(zoned.isoDate, options.holidays)) return null;
+  if (!isBusinessDay(zoned.isoDate, options)) return null;
   if (zoned.minutes < startMinutes(options.dayStart)) return null;
   return zoned.isoDate;
 }
@@ -115,8 +163,8 @@ function upcomingBusinessDate(now, overrides = {}) {
   const opened = businessMorning(now, options);
   if (opened) return opened;
   const zoned = zonedParts(now, options.timeZone);
-  if (isBusinessDay(zoned.isoDate, options.holidays)) return zoned.isoDate;
-  return nextBusinessDay(zoned.isoDate, options.holidays);
+  if (isBusinessDay(zoned.isoDate, options)) return zoned.isoDate;
+  return nextBusinessDay(zoned.isoDate, options);
 }
 
 function periodContaining(schedule, isoDate) {

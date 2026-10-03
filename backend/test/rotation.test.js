@@ -5,40 +5,23 @@ const { carryForwardBranch } = require('../services/carry');
 const { captureHandover, holdersForDate } = require('../services/rotation');
 const { prepareDesk } = require('../server');
 const { executeThreePersonVaultLock } = require('../services/closing');
-const { createBookWithRows } = require('../services/books');
 const { loadRows } = require('../services/ledger');
 const { VaultError } = require('../services/errors');
-const { DATE, kwachaRows, foreignRows, bancsRows } = require('../fixtures/sampleLedger');
+const { DATE } = require('../fixtures/sampleLedger');
 const { setupPools, resetDatabase, createDesk, closePools, pools } = require('./helpers');
 
-const FRIDAY = '2026-10-02';
 const MONDAY = '2026-10-05';
 const MONDAY_MORNING = new Date('2026-10-05T06:00:00.000Z');
 const CALENDAR = { holidays: [], timeZone: 'Africa/Lusaka', dayStart: '08:00' };
 
 let pinHash;
 
-async function openFriday(pool, desk) {
-  const classes = {
-    KWACHA_TREASURY: kwachaRows,
-    FOREIGN_CURRENCY: foreignRows,
-    BANCS_TREASURY: bancsRows,
-  };
-  const ids = [];
-  for (const [bookClass, rows] of Object.entries(classes)) {
-    ids.push(await createBookWithRows(pool, {
-      tenantId: desk.tenantId,
-      branchId: desk.branchId,
-      bookClass,
-      businessDate: FRIDAY,
-      rows,
-    }));
-  }
+async function lockSaturday(pool, desk) {
   await pool.query(
     `UPDATE branch_vault_books
      SET status = 'BALANCED_CLOSED', closed_at = now()
-     WHERE book_id = ANY($1::bigint[])`,
-    [ids],
+     WHERE branch_id = $1 AND business_date = $2`,
+    [desk.branchId, DATE],
   );
 }
 
@@ -73,7 +56,7 @@ test.beforeEach(async () => {
 test('the new cycle stays shut until handover is captured, and the log keeps the balances', async () => {
   const { applicationPool } = pools();
   const desk = await createDesk(pinHash);
-  await openFriday(applicationPool, desk);
+  await lockSaturday(applicationPool, desk);
 
   const blocked = await holdersForDate(applicationPool, desk.tenantId, desk.branchId, MONDAY);
   assert.equal(blocked.open, false);

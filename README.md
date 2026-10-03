@@ -18,7 +18,7 @@ Grand Total = Total Re-Issuable + Total Coins. There is no Old Currency Notes co
 
 ## Business morning and carry-forward
 
-At `BUSINESS_DAY_START` in `BUSINESS_TIMEZONE` (default 08:00 Africa/Lusaka) the desk opens the next business date. Saturdays, Sundays, and dates listed in `BANK_HOLIDAYS` are skipped. For each of the three books, that morning copies the previous business day's locked Bal c/d into a new book's first line, labelled Bal b/f, denomination by denomination. The copy runs only after the prior book is `BALANCED_CLOSED`. An open or missing prior book is flagged (`carry_forward_flags` and a `CARRY_FORWARD_BLOCKED` audit) and is not posted. Running the job again does not add a second line.
+At `BUSINESS_DAY_START` in `BUSINESS_TIMEZONE` (default 08:00 Africa/Lusaka) the desk opens that trading date. Trading days default to Monday through Saturday (`TRADING_WEEKDAYS`). Sundays and dates listed in `BANK_HOLIDAYS` are skipped. For each of the three books, that morning copies the previous trading day's locked Bal c/d into a new book's first line, labelled Bal b/f, denomination by denomination. Friday rolls to Saturday. Saturday rolls to Monday, unless Monday is a holiday, in which case it rolls to the next trading morning. The copy runs only after the prior book is `BALANCED_CLOSED`. An open or missing prior book is flagged (`carry_forward_flags` and a `CARRY_FORWARD_BLOCKED` audit) and is not posted. Running the job again does not add a second line.
 
 Bal c/d itself is still the certified last line the three-person close checks. It is not rewritten during the day. The automatic roll is the next morning's Bal b/f.
 
@@ -28,7 +28,7 @@ Head teller coordinators and the two vault-custodian seats each have a schedule:
 
 The opening roster is seeded and does not need a prior handover. The next period stays unassigned until outgoing and incoming holders acknowledge it with their closing PINs. The form records who is taking over, employee ID, initials, and the effective date. The handover log and a `HANDOVER_CAPTURED` audit row store the three books' locked Bal c/d balances. Once a business morning falls inside a period with no assignment, the ledger stays hidden until that handover is captured. A handover can be acknowledged before that morning.
 
-The demo also locks Friday 2 October 2026 for all three books, using the same sample rows, so a Monday handover has a Bal c/d to record. The open desk date remains Saturday 3 October 2026.
+Saturday 3 October 2026 is a trading day. The photographed sample is locked on that date and is the Bal c/d Monday 5 October brings forward. Friday 2 October 2026 is also locked, which is what a Saturday morning would roll forward. The Saturday book is the sample itself, so the morning job does not insert a second Bal b/f on top of it. The desk shows that Saturday book while Saturday is the business morning.
 
 Relief holders in the demo directory, same password and closing PIN as the other demo accounts:
 
@@ -108,7 +108,8 @@ Copy `.env.example`. Do not commit `.env`.
 | `DEMO_PASSWORD` | Shared demo directory password, hashed into `password_hash`. Not the closing PIN |
 | `LOCAL_LOGIN_MAX_FAILURES` / `LOCAL_LOGIN_LOCKOUT_MINUTES` | Lock an account after repeated wrong passwords |
 | `BUSINESS_TIMEZONE` / `BUSINESS_DAY_START` | When the next business morning begins. Default Africa/Lusaka 08:00 |
-| `BANK_HOLIDAYS` | Comma-separated dates the carry-forward skips, with weekends |
+| `TRADING_WEEKDAYS` | Days the desk opens. Default `Mon,Tue,Wed,Thu,Fri,Sat`. Sunday is closed unless named here |
+| `BANK_HOLIDAYS` | Comma-separated dates the carry-forward skips, in addition to non-trading weekdays |
 | `MOCK_ENTRA_ASSERTION` | Shared local stand-in for an Entra sign-in |
 | `CORE_BANK_MODE` | `mock` reads `mock_core_positions`. `http` GETs `${CORE_BANK_API_URL}/v1/position/:branchId` |
 | `CORE_BANK_API_URL` | Core banking base URL. Amounts must be decimal strings, not JSON numbers |
@@ -139,7 +140,7 @@ Copy `.env.example`. Do not commit `.env`.
 - Silent printing is a server-side dispatch after commit (`PRINTER_MODE=stub` or `network`). It does not run inside the browser.
 - Bancs has no separate photographed sheet, so it reuses the foreign-notes layout on its own book.
 - A branch holds one book of each of the three classes per business date.
-- Carry-forward treats Saturday and Sunday as non-business days. A book dated on a weekend, including the seeded 3 October 2026 sample, is not the source of the next Monday's Bal b/f. The source is the previous business day's locked Bal c/d.
+- Carry-forward treats Saturday as a trading day. Only Sunday, any weekday omitted from `TRADING_WEEKDAYS`, and `BANK_HOLIDAYS` are skipped. The seeded 3 October 2026 sample is Saturday's locked Bal c/d and the source of Monday 5 October's Bal b/f. Friday's locked Bal c/d is the source of Saturday's Bal b/f.
 - Incoming holders must already be active directory users of the right role. The handover checks the employee ID and initials the desk submits against that directory row.
 - Custodian seats in the demo are fortnightly, so they do not change on the same Monday as the weekly coordinator. The desk blocks only the posts whose new period has started without an assignment.
 - The first seeded period is the opening roster. Later periods are created by handover, not by editing old ledger lines.

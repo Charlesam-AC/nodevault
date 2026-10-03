@@ -116,19 +116,20 @@ async function seedDemo(db) {
     );
   }
 
-  await createBookWithRows(db, {
-    tenantId, branchId, bookClass: 'KWACHA_TREASURY', businessDate: DATE, rows: kwachaRows,
-  });
-  await createBookWithRows(db, {
-    tenantId, branchId, bookClass: 'FOREIGN_CURRENCY', businessDate: DATE, rows: foreignRows,
-  });
-  await createBookWithRows(db, {
-    tenantId, branchId, bookClass: 'BANCS_TREASURY', businessDate: DATE, rows: bancsRows,
-  });
-
-  // Friday 2 October 2026 is the previous business day before the next Monday handover.
-  // Those books are locked so the handover log has a Bal c/d to record. The open desk
-  // remains the seeded Saturday sample.
+  // Saturday 3 October 2026 is a business day. The photographed sample is locked
+  // and is the Bal c/d that Monday 5 October brings forward. Friday is locked as
+  // the source a Saturday morning would roll, but these Saturday lines are the
+  // sample itself, so the morning job does not insert a second Bal b/f.
+  const saturdayIds = [];
+  for (const [bookClass, rows] of [
+    ['KWACHA_TREASURY', kwachaRows],
+    ['FOREIGN_CURRENCY', foreignRows],
+    ['BANCS_TREASURY', bancsRows],
+  ]) {
+    saturdayIds.push(await createBookWithRows(db, {
+      tenantId, branchId, bookClass, businessDate: DATE, rows,
+    }));
+  }
   const friday = '2026-10-02';
   const fridayIds = [];
   for (const [bookClass, rows] of [
@@ -144,7 +145,7 @@ async function seedDemo(db) {
     `UPDATE branch_vault_books
      SET status = 'BALANCED_CLOSED', closed_at = now()
      WHERE book_id = ANY($1::bigint[])`,
-    [fridayIds],
+    [[...saturdayIds, ...fridayIds]],
   );
   return { seeded: true, tenantId, branchId };
 }

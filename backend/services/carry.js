@@ -165,7 +165,7 @@ async function carryForwardBranch(db, tenantId, branchId, now = new Date(), over
   if (!gate.open) {
     return { businessDate, results: [], skipped: 'HANDOVER_REQUIRED', missing: gate.missing };
   }
-  const priorBusinessDate = previousBusinessDay(businessDate, options.holidays);
+  const priorBusinessDate = previousBusinessDay(businessDate, options);
   const results = [];
   for (const bookClass of BOOK_ORDER) {
     results.push(await carryOne(db, {

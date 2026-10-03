@@ -1,17 +1,21 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { carryForwardBranch } = require('../services/carry');
+const { isBusinessDay, previousBusinessDay } = require('../services/calendar');
 const { createBookWithRows } = require('../services/books');
 const { loadRows } = require('../services/ledger');
 const { kwachaRows, foreignRows, bancsRows } = require('../fixtures/sampleLedger');
 const { setupPools, resetDatabase, createDesk, closePools, pools } = require('./helpers');
 
 const FRIDAY = '2026-10-02';
+const SATURDAY = '2026-10-03';
+const SUNDAY = '2026-10-04';
 const MONDAY = '2026-10-05';
 const TUESDAY = '2026-10-06';
-const MONDAY_MORNING = new Date('2026-10-05T06:00:00.000Z');
-const MONDAY_EARLY = new Date('2026-10-05T05:59:00.000Z');
+const SATURDAY_EARLY = new Date('2026-10-03T05:59:00.000Z');
 const SATURDAY_MORNING = new Date('2026-10-03T06:00:00.000Z');
+const SUNDAY_MORNING = new Date('2026-10-04T06:00:00.000Z');
+const MONDAY_MORNING = new Date('2026-10-05T06:00:00.000Z');
 const TUESDAY_MORNING = new Date('2026-10-06T06:00:00.000Z');
 const CALENDAR = { holidays: [], timeZone: 'Africa/Lusaka', dayStart: '08:00' };
 
@@ -42,7 +46,7 @@ async function extendRoster(pool, desk) {
   }
 }
 
-async function openFriday(pool, desk, { close } = { close: true }) {
+async function openBooks(pool, desk, businessDate, { close } = { close: true }) {
   const classes = {
     KWACHA_TREASURY: kwachaRows,
     FOREIGN_CURRENCY: foreignRows,
@@ -54,7 +58,7 @@ async function openFriday(pool, desk, { close } = { close: true }) {
       tenantId: desk.tenantId,
       branchId: desk.branchId,
       bookClass,
-      businessDate: FRIDAY,
+      businessDate,
       rows,
     }));
   }
@@ -67,6 +71,15 @@ async function openFriday(pool, desk, { close } = { close: true }) {
     );
   }
   return ids;
+}
+
+async function lockDate(pool, desk, businessDate) {
+  await pool.query(
+    `UPDATE branch_vault_books
+     SET status = 'BALANCED_CLOSED', closed_at = now()
+     WHERE branch_id = $1 AND business_date = $2`,
+    [desk.branchId, businessDate],
+  );
 }
 
 test.before(async () => {
@@ -87,13 +100,13 @@ test('rollover posts Bal b/f equal to the prior Bal c/d for all three books and 
   const { applicationPool } = pools();
   const desk = await createDesk(pinHash);
   await extendRoster(applicationPool, desk);
-  await openFriday(applicationPool, desk);
+  await lockDate(applicationPool, desk, SATURDAY);
 
   const first = await carryForwardBranch(
     applicationPool, desk.tenantId, desk.branchId, MONDAY_MORNING, CALENDAR,
   );
   assert.equal(first.businessDate, MONDAY);
-  assert.equal(first.priorBusinessDate, FRIDAY);
+  assert.equal(first.priorBusinessDate, SATURDAY);
   assert.deepEqual(first.results.map((row) => row.status), ['POSTED', 'POSTED', 'POSTED']);
 
   const second = await carryForwardBranch(
@@ -116,7 +129,7 @@ test('rollover posts Bal b/f equal to the prior Bal c/d for all three books and 
     const prior = await applicationPool.query(
       `SELECT book_id FROM branch_vault_books
        WHERE branch_id = $1 AND book_class = $2 AND business_date = $3`,
-      [desk.branchId, book.book_class, FRIDAY],
+      [desk.branchId, book.book_class, SATURDAY],
     );
     const closed = await loadRows(applicationPool, prior.rows[0].book_id);
     const carried = closed[closed.length - 1];
@@ -125,21 +138,81 @@ test('rollover posts Bal b/f equal to the prior Bal c/d for all three books and 
   }
 });
 
-test('the morning job skips weekends, holidays, and the time before the business day starts', async () => {
+test('Sunday and bank holidays are skipped, and a Saturday morning rolls Friday forward', async () => {
+  assert.equal(isBusinessDay(SATURDAY, CALENDAR), true);
+  assert.equal(isBusinessDay(SUNDAY, CALENDAR), false);
+  assert.equal(previousBusinessDay(MONDAY, CALENDAR), SATURDAY);
+  assert.equal(previousBusinessDay(SATURDAY, CALENDAR), FRIDAY);
+  const weekdaysOnly = { ...CALENDAR, tradingWeekdays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] };
+  assert.equal(isBusinessDay(SATURDAY, weekdaysOnly), false);
+  assert.equal(previousBusinessDay(MONDAY, weekdaysOnly), FRIDAY);
+
+  const { applicationPool } = pools();
+  const desk = await createDesk(pinHash, { withBooks: false });
+  await openBooks(applicationPool, desk, FRIDAY);
+
+  const sunday = await carryForwardBranch(
+    applicationPool, desk.tenantId, desk.branchId, SUNDAY_MORNING, CALENDAR,
+  );
+  assert.equal(sunday.skipped, 'NOT_A_BUSINESS_MORNING');
+
+  const early = await carryForwardBranch(
+    applicationPool, desk.tenantId, desk.branchId, SATURDAY_EARLY, CALENDAR,
+  );
+  assert.equal(early.skipped, 'NOT_A_BUSINESS_MORNING');
+
+  const saturday = await carryForwardBranch(
+    applicationPool, desk.tenantId, desk.branchId, SATURDAY_MORNING, CALENDAR,
+  );
+  assert.equal(saturday.businessDate, SATURDAY);
+  assert.equal(saturday.priorBusinessDate, FRIDAY);
+  assert.deepEqual(saturday.results.map((row) => row.status), ['POSTED', 'POSTED', 'POSTED']);
+
+  const books = await applicationPool.query(
+    `SELECT book_id, book_class FROM branch_vault_books
+     WHERE branch_id = $1 AND business_date = $2
+     ORDER BY book_class`,
+    [desk.branchId, SATURDAY],
+  );
+  assert.equal(books.rowCount, 3);
+  for (const book of books.rows) {
+    const opened = await loadRows(applicationPool, book.book_id);
+    assert.equal(opened.length, 1);
+    assert.equal(opened[0].accountingLabel, 'Bal b/f');
+    const prior = await applicationPool.query(
+      `SELECT book_id FROM branch_vault_books
+       WHERE branch_id = $1 AND book_class = $2 AND business_date = $3`,
+      [desk.branchId, book.book_class, FRIDAY],
+    );
+    const closed = await loadRows(applicationPool, prior.rows[0].book_id);
+    const carried = closed[closed.length - 1];
+    assert.equal(carried.accountingLabel, 'Bal c/d');
+    assert.deepEqual(denomMap(opened[0].cells), denomMap(carried.cells));
+  }
+
+  const holiday = await carryForwardBranch(
+    applicationPool, desk.tenantId, desk.branchId, MONDAY_MORNING,
+    { ...CALENDAR, holidays: [MONDAY] },
+  );
+  assert.equal(holiday.skipped, 'NOT_A_BUSINESS_MORNING');
+
+  const configuredOff = await carryForwardBranch(
+    applicationPool, desk.tenantId, desk.branchId, SATURDAY_MORNING, weekdaysOnly,
+  );
+  assert.equal(configuredOff.skipped, 'NOT_A_BUSINESS_MORNING');
+
+  const sundayBooks = await applicationPool.query(
+    `SELECT book_id FROM branch_vault_books WHERE branch_id = $1 AND business_date = $2`,
+    [desk.branchId, SUNDAY],
+  );
+  assert.equal(sundayBooks.rowCount, 0);
+});
+
+test('a Monday holiday rolls the locked Saturday Bal c/d forward on Tuesday', async () => {
   const { applicationPool } = pools();
   const desk = await createDesk(pinHash);
   await extendRoster(applicationPool, desk);
-  await openFriday(applicationPool, desk);
-
-  const weekend = await carryForwardBranch(
-    applicationPool, desk.tenantId, desk.branchId, SATURDAY_MORNING, CALENDAR,
-  );
-  assert.equal(weekend.skipped, 'NOT_A_BUSINESS_MORNING');
-
-  const early = await carryForwardBranch(
-    applicationPool, desk.tenantId, desk.branchId, MONDAY_EARLY, CALENDAR,
-  );
-  assert.equal(early.skipped, 'NOT_A_BUSINESS_MORNING');
+  await lockDate(applicationPool, desk, SATURDAY);
 
   const holiday = await carryForwardBranch(
     applicationPool, desk.tenantId, desk.branchId, MONDAY_MORNING,
@@ -152,24 +225,23 @@ test('the morning job skips weekends, holidays, and the time before the business
     { ...CALENDAR, holidays: [MONDAY] },
   );
   assert.equal(tuesday.businessDate, TUESDAY);
-  assert.equal(tuesday.priorBusinessDate, FRIDAY);
+  assert.equal(tuesday.priorBusinessDate, SATURDAY);
   assert.deepEqual(tuesday.results.map((row) => row.status), ['POSTED', 'POSTED', 'POSTED']);
 
   const dates = await applicationPool.query(
-    `SELECT business_date::text AS business_date
+    `SELECT DISTINCT business_date::text AS business_date
      FROM branch_vault_books
-     WHERE branch_id = $1 AND business_date >= '2026-10-05'
+     WHERE branch_id = $1 AND business_date >= '2026-10-03'
      ORDER BY business_date`,
     [desk.branchId],
   );
-  assert.deepEqual(dates.rows.map((row) => row.business_date), [TUESDAY, TUESDAY, TUESDAY]);
+  assert.deepEqual(dates.rows.map((row) => row.business_date), [SATURDAY, TUESDAY]);
 });
 
 test('an unclosed prior business day is flagged and not rolled forward', async () => {
   const { applicationPool } = pools();
   const desk = await createDesk(pinHash);
   await extendRoster(applicationPool, desk);
-  await openFriday(applicationPool, desk, { close: false });
 
   const result = await carryForwardBranch(
     applicationPool, desk.tenantId, desk.branchId, MONDAY_MORNING, CALENDAR,
