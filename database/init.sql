@@ -49,8 +49,12 @@ CREATE TABLE nodevault_users (
   employee_id VARCHAR(32) NOT NULL,
   two_letter_initials VARCHAR(8) NOT NULL,
   system_role nodevault_user_role NOT NULL,
-  -- Closing ceremony credential. Distinct from any directory / Entra secret.
+  -- Closing ceremony credential. Never the same secret as password_hash.
   closing_pin_hash TEXT,
+  -- Directory password for optional local sign-in. Null when the user has no password.
+  password_hash TEXT,
+  failed_login_count INT NOT NULL DEFAULT 0,
+  locked_until TIMESTAMPTZ,
   is_active BOOLEAN NOT NULL DEFAULT true,
   entra_object_id VARCHAR(64),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -457,6 +461,7 @@ GRANT SELECT, INSERT ON bank_tenants, branches, nodevault_users, system_control,
   ledger_amount_cells, break_glass_sessions, audit_events, dispatch_outbox,
   mock_core_positions TO nodevault_app;
 
+GRANT UPDATE (failed_login_count, locked_until) ON nodevault_users TO nodevault_app;
 GRANT UPDATE (status, closed_at) ON branch_vault_books TO nodevault_app;
 GRANT UPDATE (initialized_at, it_admin_frozen) ON system_control TO nodevault_app;
 GRANT UPDATE (status, attempts, last_error, updated_at) ON dispatch_outbox TO nodevault_app;

@@ -233,6 +233,26 @@ function showLogin() {
   document.getElementById('sign-out').hidden = true;
 }
 
+document.getElementById('password-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const error = document.getElementById('password-error');
+  error.textContent = '';
+  try {
+    const result = await api('/api/auth/login/password', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: document.getElementById('password-email').value,
+        password: document.getElementById('password').value,
+      }),
+    });
+    state.token = result.token;
+    sessionStorage.setItem('nodevault_token', result.token);
+    await enterDesk();
+  } catch (err) {
+    error.textContent = err.message;
+  }
+});
+
 document.getElementById('login-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const error = document.getElementById('login-error');
@@ -346,9 +366,13 @@ document.getElementById('glass-form').addEventListener('submit', async (event) =
 async function boot() {
   try {
     const config = await api('/api/public-config');
-    document.getElementById('domain-hint').textContent = config.enforcedDomain
-      ? `Microsoft Entra sign-in is restricted to @${config.enforcedDomain}.`
-      : 'Microsoft Entra sign-in is restricted to each bank tenant domain.';
+    document.getElementById('password-form').hidden = !config.localLogin;
+    const domain = config.enforcedDomain
+      ? `@${config.enforcedDomain}`
+      : 'each bank tenant domain';
+    document.getElementById('domain-hint').textContent = config.localLogin
+      ? `Password and Entra sign-in are both restricted to ${domain}.`
+      : `Microsoft Entra sign-in is restricted to ${domain}.`;
     if (config.entraMode === 'mock') {
       const directory = await api('/api/auth/demo-directory');
       const list = document.getElementById('demo-directory');

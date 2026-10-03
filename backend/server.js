@@ -13,9 +13,21 @@ const { openBreakGlass } = require('./services/breakglass');
 const { toDecimalString } = require('./services/money');
 const {
   authenticateCorporateIdentity,
+  authenticateLocalPassword,
+  localLoginEnabled,
   signSession,
   requireAuth,
 } = require('./middleware/auth');
+
+function sessionBody(user) {
+  return {
+    user_id: user.user_id,
+    full_legal_name: user.full_legal_name,
+    work_email: user.work_email,
+    system_role: user.system_role,
+    bank_name: user.bank_name,
+  };
+}
 
 function sendError(res, error) {
   if (error instanceof VaultError) {
@@ -58,6 +70,8 @@ function buildApp(db) {
       product: 'NodeVault',
       entraMode: process.env.ENTRA_MODE || 'mock',
       enforcedDomain: process.env.ENFORCED_CORPORATE_DOMAIN || '',
+      authMode: process.env.AUTH_MODE || 'both',
+      localLogin: localLoginEnabled(),
     });
   });
 
@@ -79,16 +93,16 @@ function buildApp(db) {
       assertion: req.body.assertion,
     });
     const token = signSession(user);
-    res.json({
-      token,
-      user: {
-        user_id: user.user_id,
-        full_legal_name: user.full_legal_name,
-        work_email: user.work_email,
-        system_role: user.system_role,
-        bank_name: user.bank_name,
-      },
+    res.json({ token, user: sessionBody(user) });
+  }));
+
+  app.post('/api/auth/login/password', asyncRoute(async (req, res) => {
+    const user = await authenticateLocalPassword(db, {
+      email: req.body.email,
+      password: req.body.password,
     });
+    const token = signSession(user);
+    res.json({ token, user: sessionBody(user) });
   }));
 
   app.post('/api/auth/break-glass', asyncRoute(async (req, res) => {

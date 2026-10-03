@@ -16,13 +16,22 @@ test('compose reaches the database service and the healthcheck is valid YAML', (
   assert.equal(fs.existsSync(path.join(root, '.env.example')), true);
 });
 
-test('closing PINs are not stored in the directory password column', () => {
+test('closing PINs are stored apart from directory passwords', () => {
   const sql = fs.readFileSync(path.join(root, 'database', 'init.sql'), 'utf8');
-  assert.match(sql, /closing_pin_hash/);
-  assert.doesNotMatch(sql, /password_hash/);
+  const pinLine = sql.split('\n').find((line) => /^\s*closing_pin_hash\b/.test(line));
+  const passwordLine = sql.split('\n').find((line) => /^\s*password_hash\b/.test(line));
+  assert.match(pinLine, /closing_pin_hash TEXT/);
+  assert.match(passwordLine, /password_hash TEXT/);
+  assert.doesNotMatch(pinLine, /password_hash/);
+  assert.match(sql, /failed_login_count/);
   assert.doesNotMatch(sql, /ON DELETE CASCADE/i);
   assert.match(sql, /ledger is append-only/);
   assert.match(sql, /in_grand/);
+  const seed = fs.readFileSync(path.join(root, 'backend', 'services', 'seed.js'), 'utf8');
+  assert.match(seed, /DEMO_CLOSING_PIN/);
+  assert.match(seed, /DEMO_PASSWORD/);
+  assert.match(seed, /passwordHash = await bcrypt.hash\(password/);
+  assert.match(seed, /pinHash = await bcrypt.hash\(pin/);
 });
 
 test('the closing path does not compare money with parseFloat', () => {

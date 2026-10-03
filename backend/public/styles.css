@@ -57,6 +57,8 @@ p { margin: 0; }
 main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
 
 .panel, .desk-bar { display: flex; gap: 1.5rem; align-items: flex-start; }
+.login-stack { display: flex; flex-direction: column; gap: 1rem; width: min(100%, 28rem); }
+.login-stack .card { width: 100%; }
 .login-copy { flex: 1.2; padding-top: 1rem; }
 .login-copy h2 { font-size: 2.4rem; line-height: 1.05; margin: 0.4rem 0 0.8rem; }
 .login-copy p:last-child { max-width: 38rem; color: var(--ink-soft); }
@@ -177,5 +179,5 @@ footer { padding: 1.5rem 1.25rem 2rem; color: var(--ink-soft); font-size: 0.82re
   .signoff, .pin-grid { display: grid; grid-template-columns: 1fr; }
   .mast-meta { text-align: left; }
   .login-copy h2 { font-size: 1.8rem; }
-  .card { width: 100%; }
+  .card, .login-stack { width: 100%; }
 }

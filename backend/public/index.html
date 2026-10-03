@@ -32,19 +32,31 @@
         <p class="kicker">Branch treasury desk</p>
         <h2>Three books. One close.</h2>
         <p>Kwacha, foreign currency, and Bancs. Values, not pieces. The book locks only when both vault custodians and the weekly coordinator sign, and the core position matches to the ngwee.</p>
-      </div>
-      <form id="login-form" class="card">
-        <h3>Corporate sign-in</h3>
         <p class="hint" id="domain-hint"></p>
-        <label for="email">Work email</label>
-        <input id="email" name="email" type="email" autocomplete="username" required placeholder="name@demo-bank.example">
-        <label for="assertion">Entra assertion</label>
-        <input id="assertion" name="assertion" type="password" autocomplete="current-password" required>
-        <p id="login-error" class="error" role="alert"></p>
-        <button type="submit">Enter the desk</button>
-        <button type="button" id="show-break-glass" class="ghost">Emergency break-glass</button>
-        <ul id="demo-directory" class="directory"></ul>
-      </form>
+      </div>
+      <div class="login-stack">
+        <form id="password-form" class="card" hidden>
+          <h3>Desk password</h3>
+          <p class="hint">Setup sign-in for this deployment. The closing PIN is a different secret and is not accepted here.</p>
+          <label for="password-email">Work email</label>
+          <input id="password-email" name="email" type="email" autocomplete="username" required placeholder="name@demo-bank.example">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          <p id="password-error" class="error" role="alert"></p>
+          <button type="submit">Sign in</button>
+        </form>
+        <form id="login-form" class="card">
+          <h3>Microsoft Entra</h3>
+          <label for="email">Work email</label>
+          <input id="email" name="email" type="email" autocomplete="username" required placeholder="name@demo-bank.example">
+          <label for="assertion">Entra assertion</label>
+          <input id="assertion" name="assertion" type="password" autocomplete="current-password" required>
+          <p id="login-error" class="error" role="alert"></p>
+          <button type="submit">Enter with Entra</button>
+          <button type="button" id="show-break-glass" class="ghost">Emergency break-glass</button>
+          <ul id="demo-directory" class="directory"></ul>
+        </form>
+      </div>
     </section>
 
     <section id="desk-view" hidden>

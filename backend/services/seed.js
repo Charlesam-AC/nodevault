@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const { localLoginEnabled } = require('../middleware/auth');
 const { isoWeekParts } = require('./week');
 const { syncCatalogue } = require('./catalogue');
 const { createBookWithRows } = require('./books');
@@ -23,6 +24,17 @@ async function seedDemo(db) {
   const rounds = Number(process.env.PIN_BCRYPT_ROUNDS || 10);
   if (!pin) throw new Error('DEMO_CLOSING_PIN is required when SEED_DEMO_DATA=true');
   const pinHash = await bcrypt.hash(pin, rounds);
+  let passwordHash = null;
+  if (localLoginEnabled()) {
+    const password = process.env.DEMO_PASSWORD || '';
+    if (password.length < 10) {
+      throw new Error('DEMO_PASSWORD must be at least 10 characters when local login is enabled');
+    }
+    if (password === pin) {
+      throw new Error('DEMO_PASSWORD must be different from DEMO_CLOSING_PIN');
+    }
+    passwordHash = await bcrypt.hash(password, rounds);
+  }
 
   const tenant = await db.query(
     `INSERT INTO bank_tenants (bank_name, corporate_domain)
@@ -52,10 +64,10 @@ async function seedDemo(db) {
     const inserted = await db.query(
       `INSERT INTO nodevault_users (
          tenant_id, branch_id, work_email, full_legal_name, employee_id,
-         two_letter_initials, system_role, closing_pin_hash, is_active
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true)
+         two_letter_initials, system_role, closing_pin_hash, password_hash, is_active
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true)
        RETURNING user_id`,
-      [tenantId, branchId, email, name, employeeId, initials, role, pinHash],
+      [tenantId, branchId, email, name, employeeId, initials, role, pinHash, passwordHash],
     );
     ids[role] = ids[role] || inserted.rows[0].user_id;
     ids[email] = inserted.rows[0].user_id;
