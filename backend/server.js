@@ -7,6 +7,9 @@ const { VaultError } = require('./services/errors');
 const { syncCatalogue } = require('./services/catalogue');
 const { seedDemo } = require('./services/seed');
 const { listBooks } = require('./services/books');
+const { businessMorning, calendarOptions } = require('./services/calendar');
+const { carryForwardBranch, listCarryFlags } = require('./services/carry');
+const { holdersForDate, rotationView, captureHandover } = require('./services/rotation');
 const { getBookView, insertLedgerRow } = require('./services/ledger');
 const { executeThreePersonVaultLock, dispatchClosing } = require('./services/closing');
 const { openBreakGlass } = require('./services/breakglass');
@@ -136,8 +139,24 @@ function buildApp(db) {
   }));
 
   app.get('/api/books', guard, asyncRoute(async (req, res) => {
-    const books = await listBooks(db, req.user.tenantId);
-    res.json({ books });
+    res.json(await prepareDesk(db, req.user));
+  }));
+
+  app.get('/api/rotation', guard, asyncRoute(async (req, res) => {
+    const desk = await prepareDesk(db, req.user);
+    res.json(desk);
+  }));
+
+  app.post('/api/rotation/handover', guard, asyncRoute(async (req, res) => {
+    const branchId = req.user.branchId;
+    if (!branchId) throw new VaultError('NO_BRANCH', 'This profile is not attached to a branch', 409);
+    const captured = await captureHandover(db, {
+      tenantId: req.user.tenantId,
+      branchId,
+      effectiveDate: req.body.effective_date,
+      posts: req.body.posts,
+    });
+    res.status(201).json(captured);
   }));
 
   app.get('/api/books/:bookId', guard, asyncRoute(async (req, res) => {
@@ -223,6 +242,60 @@ function buildApp(db) {
   return app;
 }
 
+async function latestBookDate(db, tenantId, branchId) {
+  const result = await db.query(
+    `SELECT business_date::text AS business_date
+     FROM branch_vault_books
+     WHERE tenant_id = $1 AND branch_id = $2
+     ORDER BY business_date DESC
+     LIMIT 1`,
+    [tenantId, branchId],
+  );
+  return result.rows[0] ? result.rows[0].business_date : null;
+}
+
+async function prepareDesk(db, user, now = new Date()) {
+  const tenantId = user.tenantId;
+  const branchId = user.branchId;
+  if (!branchId) throw new VaultError('NO_BRANCH', 'This profile is not attached to a branch', 409);
+  const options = calendarOptions();
+  const morning = businessMorning(now, options);
+  const gate = morning
+    ? await holdersForDate(db, tenantId, branchId, morning)
+    : { open: true, missing: [] };
+  if (morning && gate.open) {
+    await carryForwardBranch(db, tenantId, branchId, now, options);
+  }
+  const businessDate = morning || await latestBookDate(db, tenantId, branchId);
+  const deskOpen = !morning || gate.open;
+  const books = !businessDate || !deskOpen
+    ? []
+    : await listBooks(db, tenantId, businessDate);
+  const rotation = await rotationView(db, tenantId, branchId, now, options);
+  const carryFlags = businessDate
+    ? await listCarryFlags(db, tenantId, branchId, businessDate)
+    : [];
+  return {
+    businessDate,
+    deskOpen,
+    missingPosts: gate.missing,
+    books,
+    rotation,
+    carryFlags,
+  };
+}
+
+async function runMorning(db) {
+  const branches = await db.query('SELECT tenant_id, branch_id FROM branches');
+  for (const branch of branches.rows) {
+    try {
+      await prepareDesk(db, { tenantId: Number(branch.tenant_id), branchId: Number(branch.branch_id) });
+    } catch (error) {
+      console.error(JSON.stringify({ event: 'morning_job_failed', message: error.message }));
+    }
+  }
+}
+
 async function start() {
   if ((process.env.JWT_SECRET || '').length < 32) {
     throw new Error('JWT_SECRET must be at least 32 characters');
@@ -237,6 +310,15 @@ async function start() {
   const port = Number(process.env.PORT || 8080);
   const server = app.listen(port, '0.0.0.0');
   console.log(JSON.stringify({ event: 'listening', port }));
+  const morning = setInterval(() => {
+    runMorning(db).catch((error) => {
+      console.error(JSON.stringify({ event: 'morning_job_failed', message: error.message }));
+    });
+  }, 60 * 1000);
+  if (typeof morning.unref === 'function') morning.unref();
+  runMorning(db).catch((error) => {
+    console.error(JSON.stringify({ event: 'morning_job_failed', message: error.message }));
+  });
   return server;
 }
 
@@ -247,4 +329,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { buildApp, start };
+module.exports = { buildApp, start, prepareDesk };

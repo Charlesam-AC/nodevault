@@ -58,6 +58,9 @@ async function seedDemo(db) {
     ['auditor.desk@demo-bank.example', 'Branch Auditor', 'AUD-0012', 'A.U.', 'AUDITOR'],
     ['it.admin@demo-bank.example', 'IT Super Admin', 'IT-0001', 'I.T.', 'IT_SUPER_ADMIN'],
     ['rom@demo-bank.example', 'Regional Operations Manager', 'ROM-0001', 'R.M.', 'REGIONAL_OPS_MANAGER'],
+    ['custodian.relief@demo-bank.example', 'Relief Custodian', 'CUST-0301', 'R.C.', 'VAULT_CUSTODIAN'],
+    ['custodian.relief.two@demo-bank.example', 'Second Relief Custodian', 'CUST-0302', 'S.R.', 'VAULT_CUSTODIAN'],
+    ['coordinator.relief@demo-bank.example', 'Relief Coordinator', 'TELL-0902', 'R.K.', 'HEAD_TELLER_COORDINATOR'],
   ];
   const ids = {};
   for (const [email, name, employeeId, initials, role] of people) {
@@ -93,6 +96,26 @@ async function seedDemo(db) {
     [tenantId, branchId, ids['coordinator.mk@demo-bank.example'], week.isoYear, week.isoWeek],
   );
 
+  const schedules = [
+    ['CUSTODIAN_ONE', 'FORTNIGHTLY', null, '2026-09-28', '2026-10-11', ids['charles.amulike@demo-bank.example']],
+    ['CUSTODIAN_TWO', 'FORTNIGHTLY', null, '2026-09-28', '2026-10-11', ids['custodian.two@demo-bank.example']],
+    ['HEAD_TELLER', 'WEEKLY', null, '2026-09-28', '2026-10-04', ids['coordinator.mk@demo-bank.example']],
+  ];
+  for (const [postCode, cadence, customDays, anchor, periodEnd, userId] of schedules) {
+    await db.query(
+      `INSERT INTO rotation_schedules
+         (tenant_id, branch_id, post_code, cadence, custom_days, anchor_date)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [tenantId, branchId, postCode, cadence, customDays, anchor],
+    );
+    await db.query(
+      `INSERT INTO post_assignments
+         (tenant_id, branch_id, post_code, user_id, period_start, period_end)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [tenantId, branchId, postCode, userId, anchor, periodEnd],
+    );
+  }
+
   await createBookWithRows(db, {
     tenantId, branchId, bookClass: 'KWACHA_TREASURY', businessDate: DATE, rows: kwachaRows,
   });
@@ -102,6 +125,27 @@ async function seedDemo(db) {
   await createBookWithRows(db, {
     tenantId, branchId, bookClass: 'BANCS_TREASURY', businessDate: DATE, rows: bancsRows,
   });
+
+  // Friday 2 October 2026 is the previous business day before the next Monday handover.
+  // Those books are locked so the handover log has a Bal c/d to record. The open desk
+  // remains the seeded Saturday sample.
+  const friday = '2026-10-02';
+  const fridayIds = [];
+  for (const [bookClass, rows] of [
+    ['KWACHA_TREASURY', kwachaRows],
+    ['FOREIGN_CURRENCY', foreignRows],
+    ['BANCS_TREASURY', bancsRows],
+  ]) {
+    fridayIds.push(await createBookWithRows(db, {
+      tenantId, branchId, bookClass, businessDate: friday, rows,
+    }));
+  }
+  await db.query(
+    `UPDATE branch_vault_books
+     SET status = 'BALANCED_CLOSED', closed_at = now()
+     WHERE book_id = ANY($1::bigint[])`,
+    [fridayIds],
+  );
   return { seeded: true, tenantId, branchId };
 }
 

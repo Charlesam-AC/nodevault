@@ -172,6 +172,16 @@ function parsePosition(payload) {
   return out;
 }
 
+function amountsFromCells(cells) {
+  const amounts = {};
+  for (const cell of cells) {
+    if (cell.kind !== 'DENOMINATION') continue;
+    if (!amounts[cell.channel]) amounts[cell.channel] = {};
+    amounts[cell.channel][cell.code] = toDecimalString(cell.amountMinor);
+  }
+  return amounts;
+}
+
 async function insertLedgerRow(db, {
   tenantId,
   bookId,
@@ -182,7 +192,7 @@ async function insertLedgerRow(db, {
   accountingLabel,
   flowDirection,
   amounts,
-}) {
+}, { manageTransaction = true } = {}) {
   if (!['IN', 'OUT', 'BAL'].includes(flowDirection)) {
     throw new VaultError('INVALID_FLOW', 'Flow must be IN, OUT, or BAL');
   }
@@ -191,10 +201,12 @@ async function insertLedgerRow(db, {
       throw new VaultError('INVALID_INITIALS', 'Each signatory initials field is required');
     }
   }
-  const client = typeof db.connect === 'function' && !db.release ? await db.connect() : db;
-  const release = client !== db;
+  const client = manageTransaction && typeof db.connect === 'function' && !db.release
+    ? await db.connect()
+    : db;
+  const release = manageTransaction && client !== db;
   try {
-    await client.query('BEGIN');
+    if (manageTransaction) await client.query('BEGIN');
     const book = await client.query(
       `SELECT book_id, book_class, status
        FROM branch_vault_books
@@ -254,10 +266,12 @@ async function insertLedgerRow(db, {
        VALUES ${values.join(',')}`,
       params,
     );
-    await client.query('COMMIT');
+    if (manageTransaction) await client.query('COMMIT');
     return { matrixTxId: entryId, lineNumber: inserted.rows[0].line_number };
   } catch (error) {
-    try { await client.query('ROLLBACK'); } catch (_rollbackError) { /* already aborted */ }
+    if (manageTransaction) {
+      try { await client.query('ROLLBACK'); } catch (_rollbackError) { /* already aborted */ }
+    }
     throw translateLedgerError(error);
   } finally {
     if (release) client.release();
@@ -396,6 +410,7 @@ module.exports = {
   rollForward,
   positionByCurrency,
   parsePosition,
+  amountsFromCells,
   insertLedgerRow,
   loadRows,
   presentRows,

@@ -16,6 +16,28 @@ Foreign Currency and Bancs are built by one layout function (`foreignLayout` in 
 
 Grand Total = Total Re-Issuable + Total Coins. There is no Old Currency Notes column. Non-re-issuable notes (the second notes group on the Kwacha photograph: K100, K50, K20, K10, K5, K2) are stored and shown, and they are not added into the Grand Total. Foreign currencies are never summed into one figure.
 
+## Business morning and carry-forward
+
+At `BUSINESS_DAY_START` in `BUSINESS_TIMEZONE` (default 08:00 Africa/Lusaka) the desk opens the next business date. Saturdays, Sundays, and dates listed in `BANK_HOLIDAYS` are skipped. For each of the three books, that morning copies the previous business day's locked Bal c/d into a new book's first line, labelled Bal b/f, denomination by denomination. The copy runs only after the prior book is `BALANCED_CLOSED`. An open or missing prior book is flagged (`carry_forward_flags` and a `CARRY_FORWARD_BLOCKED` audit) and is not posted. Running the job again does not add a second line.
+
+Bal c/d itself is still the certified last line the three-person close checks. It is not rewritten during the day. The automatic roll is the next morning's Bal b/f.
+
+## Rotation and handover
+
+Head teller coordinators and the two vault-custodian seats each have a schedule: weekly, fortnightly, monthly, or a custom number of days. The demo coordinator rotates weekly from 28 September 2026. The two custodian seats rotate every two weeks from the same anchor. The closing interlock accepts only the people assigned to those seats on the operating date.
+
+The opening roster is seeded and does not need a prior handover. The next period stays unassigned until outgoing and incoming holders acknowledge it with their closing PINs. The form records who is taking over, employee ID, initials, and the effective date. The handover log and a `HANDOVER_CAPTURED` audit row store the three books' locked Bal c/d balances. Once a business morning falls inside a period with no assignment, the ledger stays hidden until that handover is captured. A handover can be acknowledged before that morning.
+
+The demo also locks Friday 2 October 2026 for all three books, using the same sample rows, so a Monday handover has a Bal c/d to record. The open desk date remains Saturday 3 October 2026.
+
+Relief holders in the demo directory, same password and closing PIN as the other demo accounts:
+
+| Role | Email |
+| --- | --- |
+| Vault custodian | `custodian.relief@demo-bank.example` |
+| Vault custodian | `custodian.relief.two@demo-bank.example` |
+| Head teller coordinator | `coordinator.relief@demo-bank.example` |
+
 Money is integer minor units (1/100) from the page through PostgreSQL `BIGINT`. Core-bank amounts are decimal strings. Nothing in the close path uses floating point.
 
 ## Run locally
@@ -85,6 +107,8 @@ Copy `.env.example`. Do not commit `.env`.
 | `ENABLE_LOCAL_LOGIN` | `true` shows the email and password form. `false` refuses it |
 | `DEMO_PASSWORD` | Shared demo directory password, hashed into `password_hash`. Not the closing PIN |
 | `LOCAL_LOGIN_MAX_FAILURES` / `LOCAL_LOGIN_LOCKOUT_MINUTES` | Lock an account after repeated wrong passwords |
+| `BUSINESS_TIMEZONE` / `BUSINESS_DAY_START` | When the next business morning begins. Default Africa/Lusaka 08:00 |
+| `BANK_HOLIDAYS` | Comma-separated dates the carry-forward skips, with weekends |
 | `MOCK_ENTRA_ASSERTION` | Shared local stand-in for an Entra sign-in |
 | `CORE_BANK_MODE` | `mock` reads `mock_core_positions`. `http` GETs `${CORE_BANK_API_URL}/v1/position/:branchId` |
 | `CORE_BANK_API_URL` | Core banking base URL. Amounts must be decimal strings, not JSON numbers |
@@ -100,7 +124,7 @@ Copy `.env.example`. Do not commit `.env`.
 - A deactivated user (`is_active = false`) is rejected on the next request. Repeated wrong passwords lock that account (`failed_login_count`, `locked_until`).
 - The enforced corporate domain is checked against the tenant domain for both sign-in methods.
 - Closing PINs live in `closing_pin_hash`. Directory passwords live in `password_hash`. The two hashes are produced separately and the demo values are different secrets.
-- Nightly close needs two distinct active `VAULT_CUSTODIAN` users and the `HEAD_TELLER_COORDINATOR` assigned for that ISO week, all in the same tenant. The certified total must match the book and the core position exactly, per currency.
+- Nightly close needs two distinct active `VAULT_CUSTODIAN` users and the `HEAD_TELLER_COORDINATOR` assigned on the rotation calendar for that operating date, all in the same tenant. The certified total must match the book and the core position exactly, per currency.
 - The book row is locked, the closure is audited, and the print/email intent is written in the same transaction. The printer and the mailer run only after `COMMIT`. If either fails, the book stays `BALANCED_CLOSED` and the outbox records a retry.
 - Ledger lines, amount cells, and audit events are append-only (triggers, plus no update/delete/truncate for the API role). Closed books reject new lines. Books cannot be deleted. `ON DELETE RESTRICT` keeps history attached.
 - After initialisation the IT super admin cannot sign in alone. Break-glass requires both active vault custodians at once and expires after 60 minutes. The session is audited.
@@ -115,6 +139,10 @@ Copy `.env.example`. Do not commit `.env`.
 - Silent printing is a server-side dispatch after commit (`PRINTER_MODE=stub` or `network`). It does not run inside the browser.
 - Bancs has no separate photographed sheet, so it reuses the foreign-notes layout on its own book.
 - A branch holds one book of each of the three classes per business date.
+- Carry-forward treats Saturday and Sunday as non-business days. A book dated on a weekend, including the seeded 3 October 2026 sample, is not the source of the next Monday's Bal b/f. The source is the previous business day's locked Bal c/d.
+- Incoming holders must already be active directory users of the right role. The handover checks the employee ID and initials the desk submits against that directory row.
+- Custodian seats in the demo are fortnightly, so they do not change on the same Monday as the weekly coordinator. The desk blocks only the posts whose new period has started without an assignment.
+- The first seeded period is the opening roster. Later periods are created by handover, not by editing old ledger lines.
 
 ## Layout
 

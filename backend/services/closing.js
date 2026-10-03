@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const { VaultError } = require('./errors');
-const { isoWeekParts, formatDisplayDate } = require('./week');
+const { formatDisplayDate } = require('./week');
+const { holdersForDate } = require('./rotation');
 const { mapsEqual, toDecimalString, formatMoney } = require('./money');
 const { getLayout } = require('./layout');
 const { loadRows, rollForward, positionByCurrency, parsePosition } = require('./ledger');
@@ -83,23 +84,32 @@ async function lockBook(client, tenantId, branchId, closingPayload, deps) {
     throw new VaultError('WRONG_ROLE', 'The third signatory must be the head teller coordinator', 403);
   }
 
-  let isoYear;
-  let isoWeek;
-  try {
-    ({ isoYear, isoWeek } = isoWeekParts(operatingDate));
-  } catch (_error) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(operatingDate || '')) {
     throw new VaultError('WRONG_DATE', 'operating_date must be YYYY-MM-DD');
   }
-  const assignment = await client.query(
-    `SELECT coordinator_user_id
-     FROM weekly_coordinator_assignments
-     WHERE tenant_id = $1 AND branch_id = $2 AND iso_year = $3 AND iso_week = $4`,
-    [tenantId, branchId, isoYear, isoWeek],
-  );
-  if (assignment.rowCount !== 1 || Number(assignment.rows[0].coordinator_user_id) !== ids[2]) {
+  const roster = await holdersForDate(client, tenantId, branchId, operatingDate);
+  if (!roster.open) {
+    throw new VaultError(
+      'HANDOVER_REQUIRED',
+      'The desk is shut until the incoming custodians and head teller are handed over',
+      409,
+    );
+  }
+  if (Number(roster.holders.HEAD_TELLER.user_id) !== ids[2]) {
     throw new VaultError(
       'COORDINATOR_NOT_ASSIGNED',
-      'That coordinator is not assigned to this branch for the operating week',
+      'That coordinator is not assigned to this branch for the operating date',
+      403,
+    );
+  }
+  const assignedCustodians = new Set([
+    Number(roster.holders.CUSTODIAN_ONE.user_id),
+    Number(roster.holders.CUSTODIAN_TWO.user_id),
+  ]);
+  if (!assignedCustodians.has(ids[0]) || !assignedCustodians.has(ids[1])) {
+    throw new VaultError(
+      'CUSTODIAN_NOT_ASSIGNED',
+      'That custodian is not assigned to this branch for the operating date',
       403,
     );
   }

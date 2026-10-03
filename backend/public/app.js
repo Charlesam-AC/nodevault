@@ -204,9 +204,157 @@ function renderTabs() {
   }
 }
 
+const BOOK_TITLES = {
+  KWACHA_TREASURY: 'Kwacha Treasury Book',
+  FOREIGN_CURRENCY: 'Foreign Currency Treasury Book',
+  BANCS_TREASURY: 'Bancs Treasury Book',
+};
+
+function cadenceLabel(post) {
+  if (post.cadence === 'WEEKLY') return 'Weekly';
+  if (post.cadence === 'FORTNIGHTLY') return 'Every two weeks';
+  if (post.cadence === 'MONTHLY') return 'Monthly';
+  return `Every ${post.customDays} days`;
+}
+
+function renderRotation(rotation) {
+  const host = document.getElementById('rotation-panel');
+  host.replaceChildren();
+  for (const post of rotation.posts || []) {
+    const card = document.createElement('article');
+    const title = document.createElement('h3');
+    title.textContent = post.label;
+    const cadence = document.createElement('p');
+    cadence.textContent = cadenceLabel(post);
+    const holder = document.createElement('p');
+    holder.textContent = post.current && !post.current.unassigned
+      ? `${post.current.fullLegalName} · ${post.current.employeeId} · ${post.current.initials}`
+      : 'No holder for this period';
+    const dates = document.createElement('p');
+    const span = post.current || post.next;
+    dates.textContent = span ? `${span.periodStart} to ${span.periodEnd}` : '';
+    card.append(title, cadence, holder, dates);
+    host.appendChild(card);
+  }
+}
+
+function renderFlags(flags) {
+  const host = document.getElementById('carry-flags');
+  const reasons = {
+    NOT_CLOSED: 'is still open',
+    MISSING: 'does not exist',
+    NO_CARRIED_DOWN: 'has no Bal c/d',
+  };
+  host.textContent = (flags || []).map((flag) => (
+    `${BOOK_TITLES[flag.book_class] || flag.book_class} was not opened for ${flag.business_date}: the ${flag.prior_business_date} book ${reasons[flag.reason] || flag.reason}.`
+  )).join(' ');
+}
+
+function renderHandover(rotation, deskOpen) {
+  const host = document.getElementById('handover-panel');
+  host.replaceChildren();
+  const due = rotation.due || [];
+  if (!due.length) {
+    host.hidden = true;
+    return;
+  }
+  host.hidden = false;
+  const title = document.createElement('h3');
+  title.textContent = deskOpen
+    ? `Handover due ${rotation.dueDate}`
+    : 'This cycle stays shut until handover is acknowledged';
+  const note = document.createElement('p');
+  note.textContent = 'Outgoing and incoming holders each acknowledge with their closing PIN. Employee ID and initials are taken from the directory.';
+  host.append(title, note);
+  const form = document.createElement('form');
+  form.id = 'handover-form';
+  for (const post of due) {
+    const block = document.createElement('div');
+    block.className = 'handover-post';
+    block.dataset.post = post.postCode;
+    const heading = document.createElement('h3');
+    heading.textContent = post.label;
+    const outgoing = document.createElement('p');
+    outgoing.textContent = post.outgoing
+      ? `Outgoing ${post.outgoing.fullLegalName} · ${post.outgoing.initials}`
+      : 'Outgoing holder is not on the calendar';
+    const candidates = state.directory.filter((user) => user.system_role === post.role && user.user_id !== post.outgoing?.userId);
+    const select = document.createElement('select');
+    select.dataset.field = 'incoming';
+    for (const user of candidates) {
+      const option = document.createElement('option');
+      option.value = user.user_id;
+      option.textContent = `${user.full_legal_name} · ${user.employee_id} · ${user.two_letter_initials}`;
+      option.dataset.employeeId = user.employee_id;
+      option.dataset.initials = user.two_letter_initials;
+      select.appendChild(option);
+    }
+    const outgoingPin = document.createElement('input');
+    outgoingPin.type = 'password';
+    outgoingPin.placeholder = 'Outgoing closing PIN';
+    outgoingPin.autocomplete = 'off';
+    outgoingPin.required = true;
+    outgoingPin.dataset.field = 'outgoing-pin';
+    const incomingPin = document.createElement('input');
+    incomingPin.type = 'password';
+    incomingPin.placeholder = 'Incoming closing PIN';
+    incomingPin.autocomplete = 'off';
+    incomingPin.required = true;
+    incomingPin.dataset.field = 'incoming-pin';
+    block.append(heading, outgoing, select, outgoingPin, incomingPin);
+    form.appendChild(block);
+  }
+  const error = document.createElement('p');
+  error.id = 'handover-error';
+  error.className = 'error';
+  const button = document.createElement('button');
+  button.type = 'submit';
+  button.textContent = 'Acknowledge handover';
+  form.append(error, button);
+  form.addEventListener('submit', submitHandover);
+  host.appendChild(form);
+}
+
+async function submitHandover(event) {
+  event.preventDefault();
+  const error = document.getElementById('handover-error');
+  error.textContent = '';
+  const posts = [];
+  for (const block of event.currentTarget.querySelectorAll('.handover-post')) {
+    const select = block.querySelector('[data-field="incoming"]');
+    const option = select.selectedOptions[0];
+    if (!option) {
+      error.textContent = 'Choose the incoming holder.';
+      return;
+    }
+    posts.push({
+      post_code: block.dataset.post,
+      incoming_user_id: Number(option.value),
+      employee_id: option.dataset.employeeId,
+      initials: option.dataset.initials,
+      outgoing_pin: block.querySelector('[data-field="outgoing-pin"]').value,
+      incoming_pin: block.querySelector('[data-field="incoming-pin"]').value,
+    });
+  }
+  try {
+    await api('/api/rotation/handover', {
+      method: 'POST',
+      body: JSON.stringify({
+        effective_date: state.rotation.dueDate,
+        posts,
+      }),
+    });
+    await enterDesk();
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
 async function enterDesk() {
   state.me = await api('/api/me');
-  state.books = (await api('/api/books')).books;
+  const desk = await api('/api/books');
+  state.books = desk.books;
+  state.rotation = desk.rotation;
   state.directory = (await api('/api/directory')).users;
   loginView.hidden = true;
   deskView.hidden = false;
@@ -220,9 +368,21 @@ async function enterDesk() {
   } else {
     banner.hidden = true;
   }
+  renderRotation(desk.rotation || { posts: [] });
+  renderFlags(desk.carryFlags);
+  renderHandover(desk.rotation || { due: [] }, desk.deskOpen);
+  const ledger = document.getElementById('ledger-panel');
+  ledger.hidden = !desk.deskOpen;
+  if (!desk.deskOpen) {
+    document.getElementById('desk-status').textContent = `Handover required before ${desk.businessDate} can open.`;
+    return;
+  }
   renderTabs();
   renderSignoff();
   if (state.books[0]) await openBook(state.books[0].book_id);
+  else document.getElementById('desk-status').textContent = desk.businessDate
+    ? `No treasury book is open for ${desk.businessDate}.`
+    : 'No treasury book has been opened yet.';
 }
 
 function showLogin() {

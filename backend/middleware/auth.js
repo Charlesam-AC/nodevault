@@ -176,7 +176,7 @@ async function resolvePrincipal(db, token, now = new Date()) {
     throw new VaultError('ACCESS_DENIED', 'Access denied', 401);
   }
   const result = await db.query(
-    `SELECT u.user_id, u.tenant_id, u.work_email, u.full_legal_name, u.employee_id,
+    `SELECT u.user_id, u.tenant_id, u.branch_id, u.work_email, u.full_legal_name, u.employee_id,
             u.two_letter_initials, u.system_role, u.is_active, t.corporate_domain, t.bank_name
      FROM nodevault_users u
      JOIN bank_tenants t ON t.tenant_id = u.tenant_id
@@ -220,6 +220,7 @@ async function resolvePrincipal(db, token, now = new Date()) {
   return {
     userId: Number(user.user_id),
     tenantId: Number(user.tenant_id),
+    branchId: user.branch_id === null || user.branch_id === undefined ? null : Number(user.branch_id),
     role: user.system_role,
     email: user.work_email,
     fullLegalName: user.full_legal_name,

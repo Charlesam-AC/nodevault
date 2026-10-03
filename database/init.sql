@@ -83,6 +83,64 @@ CREATE TABLE weekly_coordinator_assignments (
   FOREIGN KEY (tenant_id, coordinator_user_id) REFERENCES nodevault_users (tenant_id, user_id)
 );
 
+-- Who holds each vault post for a date range. The closing interlock reads this, not "any" person of that role.
+CREATE TABLE rotation_schedules (
+  schedule_id SERIAL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
+  branch_id INT NOT NULL,
+  post_code VARCHAR(32) NOT NULL CHECK (post_code IN ('CUSTODIAN_ONE', 'CUSTODIAN_TWO', 'HEAD_TELLER')),
+  cadence VARCHAR(16) NOT NULL CHECK (cadence IN ('WEEKLY', 'FORTNIGHTLY', 'MONTHLY', 'CUSTOM')),
+  custom_days INT,
+  anchor_date DATE NOT NULL,
+  CHECK (
+    (cadence = 'CUSTOM' AND custom_days BETWEEN 1 AND 366)
+    OR (cadence <> 'CUSTOM' AND custom_days IS NULL)
+  ),
+  UNIQUE (tenant_id, branch_id, post_code),
+  FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id)
+);
+
+CREATE TABLE handover_logs (
+  handover_id BIGSERIAL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
+  branch_id INT NOT NULL,
+  effective_date DATE NOT NULL,
+  balances JSONB NOT NULL,
+  detail JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, branch_id, effective_date),
+  FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id)
+);
+
+CREATE TABLE post_assignments (
+  assignment_id BIGSERIAL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
+  branch_id INT NOT NULL,
+  post_code VARCHAR(32) NOT NULL CHECK (post_code IN ('CUSTODIAN_ONE', 'CUSTODIAN_TWO', 'HEAD_TELLER')),
+  user_id INT NOT NULL,
+  period_start DATE NOT NULL,
+  period_end DATE NOT NULL,
+  handover_id BIGINT REFERENCES handover_logs (handover_id),
+  CHECK (period_end >= period_start),
+  UNIQUE (tenant_id, branch_id, post_code, period_start),
+  FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id),
+  FOREIGN KEY (tenant_id, user_id) REFERENCES nodevault_users (tenant_id, user_id)
+);
+
+-- A morning that could not roll a locked Bal c/d forward. Not a ledger row.
+CREATE TABLE carry_forward_flags (
+  flag_id BIGSERIAL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
+  branch_id INT NOT NULL,
+  book_class nodevault_book_class NOT NULL,
+  business_date DATE NOT NULL,
+  prior_business_date DATE NOT NULL,
+  reason VARCHAR(32) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, branch_id, book_class, business_date),
+  FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id)
+);
+
 CREATE TABLE branch_vault_books (
   book_id BIGSERIAL PRIMARY KEY,
   branch_id INT NOT NULL,
@@ -196,6 +254,7 @@ CREATE INDEX idx_cells_entry ON ledger_amount_cells (matrix_tx_id);
 CREATE INDEX idx_users_tenant ON nodevault_users (tenant_id);
 CREATE INDEX idx_audit_tenant_created ON audit_events (tenant_id, created_at);
 CREATE INDEX idx_assignments_lookup ON weekly_coordinator_assignments (tenant_id, branch_id, iso_year, iso_week);
+CREATE INDEX idx_post_assignments_cover ON post_assignments (tenant_id, branch_id, post_code, period_start, period_end);
 CREATE INDEX idx_outbox_book ON dispatch_outbox (book_id, status);
 
 CREATE OR REPLACE FUNCTION nodevault_user_email_domain()
@@ -219,6 +278,21 @@ CREATE TRIGGER nodevault_user_email_domain
 BEFORE INSERT OR UPDATE ON nodevault_users
 FOR EACH ROW
 EXECUTE FUNCTION nodevault_user_email_domain();
+
+CREATE OR REPLACE FUNCTION nodevault_reject_handover_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  RAISE EXCEPTION 'handover log is append-only';
+END;
+$$;
+
+CREATE TRIGGER handover_logs_append_only
+BEFORE UPDATE OR DELETE ON handover_logs
+FOR EACH ROW
+EXECUTE FUNCTION nodevault_reject_handover_mutation();
 
 CREATE OR REPLACE FUNCTION nodevault_reject_ledger_mutation()
 RETURNS trigger
@@ -457,7 +531,8 @@ GRANT USAGE ON SCHEMA public TO nodevault_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nodevault_app;
 
 GRANT SELECT, INSERT ON bank_tenants, branches, nodevault_users, system_control,
-  weekly_coordinator_assignments, branch_vault_books, vault_denomination_matrix_ledger,
+  weekly_coordinator_assignments, rotation_schedules, handover_logs, post_assignments,
+  carry_forward_flags, branch_vault_books, vault_denomination_matrix_ledger,
   ledger_amount_cells, break_glass_sessions, audit_events, dispatch_outbox,
   mock_core_positions TO nodevault_app;
 
@@ -473,3 +548,4 @@ REVOKE UPDATE, DELETE, TRUNCATE ON ledger_amount_cells FROM nodevault_app;
 REVOKE UPDATE, DELETE, TRUNCATE ON audit_events FROM nodevault_app;
 REVOKE DELETE, TRUNCATE ON branch_vault_books FROM nodevault_app;
 REVOKE DELETE, TRUNCATE ON audit_events FROM nodevault_app;
+REVOKE UPDATE, DELETE, TRUNCATE ON handover_logs FROM nodevault_app;

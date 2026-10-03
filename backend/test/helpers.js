@@ -56,6 +56,10 @@ async function setupPools() {
 async function resetDatabase() {
   await adminPool.query(`
     DROP TABLE IF EXISTS
+      post_assignments,
+      handover_logs,
+      carry_forward_flags,
+      rotation_schedules,
       dispatch_outbox,
       audit_events,
       ledger_amount_cells,
@@ -75,6 +79,7 @@ async function resetDatabase() {
     DROP FUNCTION IF EXISTS nodevault_reject_closed_book_insert() CASCADE;
     DROP FUNCTION IF EXISTS nodevault_guard_book() CASCADE;
     DROP FUNCTION IF EXISTS nodevault_verify_entry_arithmetic() CASCADE;
+    DROP FUNCTION IF EXISTS nodevault_reject_handover_mutation() CASCADE;
     DROP TYPE IF EXISTS nodevault_user_role CASCADE;
     DROP TYPE IF EXISTS nodevault_book_class CASCADE;
     DROP TYPE IF EXISTS nodevault_book_status CASCADE;
@@ -128,6 +133,24 @@ async function createDesk(pinHash) {
      VALUES ($1,$2,$3,$4,$5)`,
     [tenantId, branchId, users.coord.user_id, week.isoYear, week.isoWeek],
   );
+  const roster = [
+    ['CUSTODIAN_ONE', users.c1.user_id],
+    ['CUSTODIAN_TWO', users.c2.user_id],
+    ['HEAD_TELLER', users.coord.user_id],
+  ];
+  for (const [postCode, userId] of roster) {
+    await db.query(
+      `INSERT INTO rotation_schedules (tenant_id, branch_id, post_code, cadence, anchor_date)
+       VALUES ($1, $2, $3, 'WEEKLY', '2026-09-28')`,
+      [tenantId, branchId, postCode],
+    );
+    await db.query(
+      `INSERT INTO post_assignments
+         (tenant_id, branch_id, post_code, user_id, period_start, period_end)
+       VALUES ($1, $2, $3, $4, '2026-09-28', '2026-10-04')`,
+      [tenantId, branchId, postCode, userId],
+    );
+  }
   const books = {
     KWACHA_TREASURY: await createBookWithRows(db, {
       tenantId, branchId, bookClass: 'KWACHA_TREASURY', businessDate: DATE, rows: kwachaRows,

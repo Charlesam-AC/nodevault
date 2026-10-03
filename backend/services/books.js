@@ -46,20 +46,26 @@ async function createBookWithRows(db, {
   return bookId;
 }
 
-async function listBooks(db, tenantId) {
+async function listBooks(db, tenantId, businessDate = null) {
+  const params = [tenantId];
+  let dateClause = '';
+  if (businessDate) {
+    params.push(businessDate);
+    dateClause = ` AND b.business_date = $${params.length}`;
+  }
   const result = await db.query(
     `SELECT b.book_id, b.book_class, b.status, b.business_date::text AS business_date,
             b.branch_id, br.branch_name
      FROM branch_vault_books b
      JOIN branches br ON br.branch_id = b.branch_id AND br.tenant_id = b.tenant_id
-     WHERE b.tenant_id = $1
+     WHERE b.tenant_id = $1${dateClause}
      ORDER BY b.business_date DESC,
        CASE b.book_class
          WHEN 'KWACHA_TREASURY' THEN 1
          WHEN 'FOREIGN_CURRENCY' THEN 2
          WHEN 'BANCS_TREASURY' THEN 3
        END`,
-    [tenantId],
+    params,
   );
   return result.rows;
 }
