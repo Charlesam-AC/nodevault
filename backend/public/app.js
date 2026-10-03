@@ -160,7 +160,10 @@ async function openBook(bookId) {
   try {
     const view = await api(`/api/books/${bookId}`);
     state.book = view;
-    document.getElementById('book-formula').textContent = `${view.layout.instruction}. ${view.layout.formula}.`;
+    const formula = view.layout.formula.endsWith('.')
+      ? view.layout.formula
+      : `${view.layout.formula}.`;
+    document.getElementById('book-formula').textContent = `${view.layout.instruction}. ${formula}`;
     const stamp = view.book.status === 'BALANCED_CLOSED' ? ' CLOSED' : '';
     status.textContent = `${view.layout.title} · ${view.book.business_date} · ${view.book.branch_name}${stamp}`;
     document.getElementById('open-close').disabled = view.book.status !== 'OPEN' || !view.position || view.position.error;

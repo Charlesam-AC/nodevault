@@ -32,7 +32,7 @@ test('the closing path does not compare money with parseFloat', () => {
   assert.doesNotMatch(source, /parseFloat|Number\.parseFloat/);
   const closing = fs.readFileSync(path.join(__dirname, '..', 'services', 'closing.js'), 'utf8');
   const commitAt = closing.indexOf("await client.query('COMMIT')");
-  const dispatchAt = closing.indexOf('dispatchClosing(');
+  const dispatchAt = closing.indexOf('await dispatchClosing(');
   assert.ok(commitAt > 0 && dispatchAt > commitAt);
 });
 

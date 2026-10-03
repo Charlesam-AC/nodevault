@@ -118,7 +118,7 @@ async function lockBook(client, tenantId, branchId, closingPayload, deps) {
      FROM branch_vault_books b
      JOIN branches br ON br.branch_id = b.branch_id AND br.tenant_id = b.tenant_id
      WHERE b.book_id = $1 AND b.tenant_id = $2 AND b.branch_id = $3
-     FOR UPDATE`,
+     FOR UPDATE OF b`,
     [bookId, tenantId, branchId],
   );
   if (bookResult.rowCount !== 1) {

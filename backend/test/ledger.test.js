@@ -92,9 +92,9 @@ test('ledger rows are append-only, closed books reject lines, and old currency i
     [desk.branchId],
   );
   assert.deepEqual(classes.rows.map((row) => row.book_class), [
-    'BANCS_TREASURY',
-    'FOREIGN_CURRENCY',
     'KWACHA_TREASURY',
+    'FOREIGN_CURRENCY',
+    'BANCS_TREASURY',
   ]);
   await assert.rejects(
     () => applicationPool.query(
