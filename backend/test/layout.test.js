@@ -19,6 +19,12 @@ test('a branch has exactly three treasury book classes', () => {
   assert.equal(getLayout('KWACHA_TREASURY').title, 'Kwacha Treasury Book');
   assert.equal(getLayout('FOREIGN_CURRENCY').title, 'Foreign Currency Treasury Book');
   assert.equal(getLayout('BANCS_TREASURY').title, 'Bancs Treasury Book');
+  assert.equal(
+    getLayout('FOREIGN_CURRENCY').sheetTitle,
+    'FOREIGN NOTES (all currencies to be squared off after transaction)',
+  );
+  assert.equal(getLayout('BANCS_TREASURY').sheetTitle, getLayout('FOREIGN_CURRENCY').sheetTitle);
+  assert.match(getLayout('KWACHA_TREASURY').sheetTitle, /^KWACHA NOTES /);
 });
 
 test('foreign currency and bancs share one column layout', () => {

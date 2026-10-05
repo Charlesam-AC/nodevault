@@ -73,8 +73,20 @@
       <p id="desk-status" class="status" role="status"></p>
       <p id="book-formula" class="formula"></p>
       <div id="position-chips" class="chips"></div>
-      <div class="ledger-scroll">
-        <table class="ledger-table" id="ledger"></table>
+      <div class="ledger-margin" data-theme="paper">
+        <div class="sheet-toolbar">
+          <label for="ledger-theme">Sheet</label>
+          <select id="ledger-theme" aria-label="Ledger sheet theme">
+            <option value="paper">Paper book</option>
+            <option value="desk">Desk</option>
+          </select>
+        </div>
+        <div class="ledger-scroll">
+          <div class="sheet">
+            <div class="sheet-title" id="sheet-title"></div>
+            <table class="ledger-table" id="ledger"></table>
+          </div>
+        </div>
       </div>
       <section id="signoff" class="signoff" aria-label="Closing sign-off"></section>
       </div>

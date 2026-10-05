@@ -103,6 +103,7 @@ function kwachaLayout() {
   return {
     bookClass: 'KWACHA_TREASURY',
     title: 'Kwacha Treasury Book',
+    sheetTitle: 'KWACHA NOTES (all denominations to be squared off after transaction)',
     instruction: 'Square off all denominations after any transaction',
     formula: 'Grand Total = Total Re-Issuable + Total Coins',
     grandCurrency: 'ZMW',
@@ -159,6 +160,7 @@ function foreignLayout(bookClass, title) {
   return {
     bookClass,
     title,
+    sheetTitle: 'FOREIGN NOTES (all currencies to be squared off after transaction)',
     instruction: 'All currencies to be squared off after any transaction',
     formula: 'Each currency totals on its own. Currencies are not added together.',
     grandCurrency: null,
@@ -221,6 +223,7 @@ function publicLayout(bookClass) {
   return {
     book_class: bookClass,
     title: layout.title,
+    sheet_title: layout.sheetTitle,
     instruction: layout.instruction,
     formula: layout.formula,
     identity: IDENTITY.map((column) => column.header),

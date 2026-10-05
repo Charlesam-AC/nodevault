@@ -30,8 +30,21 @@ function cellKey(column) {
   return `${column.channel}|${column.code}|${column.kind}`;
 }
 
+function columnClasses(column, index, size) {
+  if (column.gutter) return 'gutter';
+  const classes = [`page-${String(column.page || 'left').toLowerCase()}`];
+  if (column.key === 'line_number' || column.key === 'line_repeat') classes.push('col-no');
+  else if (column.key === 'date' || column.key === 'in_or_out' || column.key === 'initials') classes.push('col-identity');
+  if (column.kind === 'SUBTOTAL' || column.kind === 'GRAND') classes.push('col-total');
+  if (index === 0) classes.push('group-start');
+  if (index === size - 1) classes.push('group-end');
+  return classes.join(' ');
+}
+
 function renderSpread(view) {
   const table = document.getElementById('ledger');
+  const title = document.getElementById('sheet-title');
+  if (title) title.textContent = view.layout.sheet_title || view.layout.title;
   const groups = view.layout.groups;
   const headGroups = document.createElement('tr');
   const headCols = document.createElement('tr');
@@ -51,16 +64,20 @@ function renderSpread(view) {
     groupCell.className = `group-head page-${group.page.toLowerCase()}`;
     groupCell.textContent = group.label || '';
     headGroups.appendChild(groupCell);
-    for (const column of group.columns) {
+    group.columns.forEach((column, index) => {
       const th = document.createElement('th');
-      th.className = `page-${group.page.toLowerCase()}`;
+      th.className = columnClasses({ ...column, page: group.page }, index, group.columns.length);
       const span = document.createElement('span');
       span.className = 'ledger-th-text';
       span.textContent = column.header;
       th.appendChild(span);
       headCols.appendChild(th);
-      flat.push({ ...column, page: group.page });
-    }
+      flat.push({
+        ...column,
+        page: group.page,
+        className: columnClasses({ ...column, page: group.page }, index, group.columns.length),
+      });
+    });
   }
   const thead = document.createElement('thead');
   thead.append(headGroups, headCols);
@@ -83,7 +100,7 @@ function renderSpread(view) {
         tr.appendChild(td);
         continue;
       }
-      td.className = `page-${column.page.toLowerCase()}`;
+      td.className = column.className;
       let text = '';
       if (column.key === 'line_number' || column.key === 'line_repeat') text = String(row.line_number);
       else if (column.key === 'date') text = row.date_display;
@@ -759,6 +776,22 @@ document.getElementById('glass-form').addEventListener('submit', async (event) =
     error.textContent = err.message;
   }
 });
+
+function applyLedgerTheme(theme) {
+  const margin = document.querySelector('.ledger-margin');
+  if (!margin) return;
+  const next = theme === 'desk' ? 'desk' : 'paper';
+  margin.dataset.theme = next;
+  const select = document.getElementById('ledger-theme');
+  if (select && select.value !== next) select.value = next;
+  sessionStorage.setItem('ledger-theme', next);
+}
+
+const themeSelect = document.getElementById('ledger-theme');
+if (themeSelect) {
+  applyLedgerTheme(sessionStorage.getItem('ledger-theme') || 'paper');
+  themeSelect.addEventListener('change', () => applyLedgerTheme(themeSelect.value));
+}
 
 async function boot() {
   try {

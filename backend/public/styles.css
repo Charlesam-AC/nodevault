@@ -113,39 +113,143 @@ button[type="submit"], #open-close {
   border: 1px solid var(--rule);
   padding: 0.25rem 0.5rem;
 }
+.ledger-margin {
+  --ledger-margin: #ffffff;
+  --ledger-paper: #d3ebf2;
+  --ledger-paper-alt: #d3ebf2;
+  --ledger-rule: #8ec5d8;
+  --ledger-rule-col: #3e93b3;
+  --ledger-rule-group: #1c6e90;
+  --ledger-ink: #1c6e90;
+  --ledger-value: #1a232b;
+  --ledger-gutter: #efeae3;
+  background: var(--ledger-margin);
+  padding: 1.35rem 1.65rem 1.55rem;
+}
+.ledger-margin[data-theme="desk"] {
+  --ledger-margin: #d5e4ea;
+  --ledger-paper: #e5f3f8;
+  --ledger-paper-alt: #e7f4ee;
+  --ledger-rule: #c5d8e1;
+  --ledger-rule-col: #7eabbf;
+  --ledger-rule-group: #7eabbf;
+  --ledger-ink: #163044;
+  --ledger-value: #163044;
+  --ledger-gutter: #1b2830;
+}
+.sheet-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+}
+.sheet-toolbar label {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.sheet-toolbar select {
+  width: auto;
+  margin: 0;
+  padding: 0.28rem 0.45rem;
+  font-size: 0.82rem;
+}
 .ledger-scroll {
   overflow-x: auto;
-  border: 1px solid #9bb7c4;
-  background: #d5e4ea;
-  box-shadow: inset 0 0 0 8px #f4f8fa;
+  background: var(--ledger-margin);
+}
+.sheet {
+  width: max-content;
+  min-width: 100%;
+  background: var(--ledger-paper);
+  border: 2px solid var(--ledger-rule-group);
+}
+.sheet-title {
+  margin: 0;
+  padding: 0.32rem 0.75rem 0.28rem;
+  text-align: center;
+  font-family: "Public Sans", "Segoe UI", sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  color: var(--ledger-ink);
+  white-space: nowrap;
+  background: var(--ledger-paper);
+  border-bottom: 2px solid var(--ledger-rule-group);
 }
 .ledger-table {
   border-collapse: separate;
   border-spacing: 0;
   width: max-content;
   min-width: 100%;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  background: var(--ledger-paper);
 }
 .ledger-table th, .ledger-table td {
   white-space: nowrap;
-  padding: 0.28rem 0.45rem;
-  border-right: 1px solid var(--rule);
-  border-bottom: 1px solid #c5d8e1;
+  padding: 0.22rem 0.42rem;
+  border-right: 1px solid var(--ledger-rule-col);
+  border-bottom: 1px solid var(--ledger-rule);
   text-align: right;
+  color: var(--ledger-value);
+  background: var(--ledger-paper);
 }
-.ledger-table th { text-align: center; font-weight: 500; }
-.ledger-th-text { display: inline-block; white-space: nowrap; }
-.page-left { background: var(--page-left); }
-.page-right { background: var(--page-right); }
+.ledger-table th {
+  text-align: center;
+  font-family: "Public Sans", "Segoe UI", sans-serif;
+  font-weight: 700;
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ledger-ink);
+  background: var(--ledger-paper);
+}
+.ledger-table td {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.82rem;
+}
+.ledger-table td.dynamic-fit-value { min-width: 5.1rem; }
+.ledger-th-text { display: inline-block; white-space: nowrap; color: var(--ledger-ink); }
+.page-left { background: var(--ledger-paper); }
+.page-right { background: var(--ledger-paper-alt); }
+.ledger-table th.page-right,
+.ledger-table td.page-right { background: var(--ledger-paper-alt); }
 .gutter {
-  width: 14px;
-  min-width: 14px;
+  width: 16px;
+  min-width: 16px;
   padding: 0;
-  background: #1b2830;
-  border: 0;
+  background: var(--ledger-gutter);
+  border-left: 2px solid var(--ledger-rule-group);
+  border-right: 2px solid var(--ledger-rule-group);
+  border-bottom: 0;
 }
-.group-head { font-family: "Public Sans", sans-serif; font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; }
-tr[data-label="Bal c/d"] td { box-shadow: inset 0 3px 0 #163044; font-weight: 500; }
+.group-head {
+  font-family: "Public Sans", "Segoe UI", sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ledger-ink);
+  border-bottom: 2px solid var(--ledger-rule-group);
+  border-right: 2px solid var(--ledger-rule-group);
+}
+.ledger-table thead tr:last-child th { border-bottom: 2px solid var(--ledger-rule-group); }
+.group-start { border-left: 2px solid var(--ledger-rule-group); }
+.group-end,
+.col-total { border-right: 2px solid var(--ledger-rule-group); }
+.col-no,
+.col-identity { text-align: center; }
+.col-no {
+  color: var(--ledger-ink);
+  font-weight: 700;
+}
+tr[data-label="Bal c/d"] td {
+  border-top: 2px solid var(--ledger-rule-group);
+  font-weight: 600;
+}
 .stamp {
   display: inline-block;
   margin-left: 0.5rem;
@@ -234,6 +338,47 @@ dialog::backdrop { background: rgba(16, 40, 51, 0.45); }
 .pin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
 footer { padding: 1.5rem 1.25rem 2rem; color: var(--ink-soft); font-size: 0.82rem; }
+
+@media (min-width: 1800px) {
+  main { max-width: min(2400px, calc(100% - 2.5rem)); }
+}
+
+@media print {
+  header.mast,
+  footer,
+  #login-view,
+  #calendar-panel,
+  #rotation-panel,
+  #handover-panel,
+  #carry-flags,
+  .desk-bar,
+  .sheet-toolbar,
+  .chips,
+  .status,
+  .formula,
+  .signoff,
+  .banner { display: none !important; }
+  body { background: #fff; }
+  main { max-width: none; padding: 0; }
+  .ledger-margin,
+  .ledger-margin[data-theme="desk"] {
+    --ledger-margin: #ffffff;
+    --ledger-paper: #d3ebf2;
+    --ledger-paper-alt: #d3ebf2;
+    --ledger-rule: #8ec5d8;
+    --ledger-rule-col: #3e93b3;
+    --ledger-rule-group: #1c6e90;
+    --ledger-ink: #1c6e90;
+    --ledger-value: #1a232b;
+    --ledger-gutter: #efeae3;
+    padding: 0.4rem;
+  }
+  .ledger-scroll { overflow: visible; }
+  .sheet, .ledger-table th, .ledger-table td, .sheet-title, .gutter {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
 
 @media (max-width: 860px) {
   .panel, .desk-bar, .mast, .signoff, .pin-grid { flex-direction: column; display: flex; }
