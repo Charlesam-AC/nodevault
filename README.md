@@ -2,7 +2,7 @@
 
 Paperless treasury and vault balance engine for commercial banks. One deployment can be white-labelled per bank. Each branch keeps exactly three books: the Kwacha Treasury Book, the Foreign Currency Treasury Book, and the Bancs Treasury Book.
 
-Charles Amulike, NodeLink Systems Limited. Specification v1.0.4. Column layouts follow the photographed paper books (v1.0.9 was the starting draft, not the finished behaviour).
+Charles Amulike. Specification v1.0.4. Column layouts follow the photographed paper books (v1.0.9 was the starting draft, not the finished behaviour).
 
 ## Books
 

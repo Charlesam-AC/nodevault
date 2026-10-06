@@ -1,5 +1,5 @@
 -- NodeVault schema
--- Author: Charles Amulike, NodeLink Systems Limited
+-- Author: Charles Amulike
 -- Money is stored as BIGINT minor units (1/100 of the major unit). No float columns.
 -- Ledger rows, amount cells, and audit events are append-only.
 

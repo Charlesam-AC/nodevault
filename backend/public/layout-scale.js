@@ -1,6 +1,6 @@
 /**
  * NodeVault Dynamic Font Scaling & Horizontal Layout Alignment Core
- * Author: Charles Amulike | Organization: NodeLink Systems Limited
+ * Author: Charles Amulike
  */
 function synchronizeHorizontalMatrixLayout() {
   // STEP 1: FORCE UNIFORM HORIZONTAL LABELS (Bans vertical wrapping entirely)
