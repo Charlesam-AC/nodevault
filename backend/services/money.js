@@ -34,15 +34,13 @@ function toDecimalString(minor) {
   return `${whole.toString()}.${frac}`;
 }
 
-function formatMoney(minor, symbol, { signed = false } = {}) {
+function formatMoney(minor, symbol, { signed = false, direction = 'IN' } = {}) {
   const decimal = toDecimalString(minor);
   const [whole, frac] = decimal.split('.');
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   const body = `${symbol}${grouped}.${frac}`;
-  if (signed) {
-    return `+ ${body}`;
-  }
-  return body;
+  if (!signed) return body;
+  return direction === 'OUT' ? `- ${body}` : `+ ${body}`;
 }
 
 function mapsEqual(left, right) {

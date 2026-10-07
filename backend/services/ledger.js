@@ -80,7 +80,10 @@ function composeRow(bookClass, entry) {
 
 function displayFor(cell, flowDirection) {
   const signed = cell.kind !== 'DENOMINATION' && flowDirection !== 'BAL';
-  return formatMoney(cell.amountMinor, cell.symbol, { signed });
+  return formatMoney(cell.amountMinor, cell.symbol, {
+    signed,
+    direction: flowDirection === 'OUT' ? 'OUT' : 'IN',
+  });
 }
 
 function mapFromCells(cells) {

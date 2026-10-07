@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { toMinor, formatMoney } = require('../services/money');
-const { composeRow, rollForward, positionByCurrency, getBookView } = require('../services/ledger');
+const { composeRow, presentRows, rollForward, positionByCurrency, getBookView } = require('../services/ledger');
 const { parseOutstanding } = require('../services/corebank');
 const {
   SAMPLE_TOTALS,
@@ -22,6 +22,43 @@ function positionOf(bookClass, rows) {
   const carried = built[built.length - 1];
   return positionByCurrency(bookClass, carried.cells);
 }
+
+test('an Out total prints a minus and an In total prints a plus', () => {
+  assert.equal(formatMoney(1000n, 'K', { signed: true }), '+ K10.00');
+  assert.equal(formatMoney(1000n, 'K', { signed: true, direction: 'OUT' }), '- K10.00');
+  assert.equal(formatMoney(0n, 'K', { signed: true, direction: 'OUT' }), '- K0.00');
+  assert.equal(formatMoney(1000n, 'K'), 'K10.00');
+  const cells = composeRow('KWACHA_TREASURY', {
+    amounts: { REISSUABLE: { K100: '10.00' } },
+  });
+  const base = {
+    lineNumber: 2,
+    transactionDate: '2026-10-07',
+    custodianOneInitials: 'C.A.',
+    custodianTwoInitials: 'J.P.',
+    tellerCoordInitials: 'M.K.',
+    lineReference: 'Seal 14',
+    cells,
+  };
+  const [incoming] = presentRows('KWACHA_TREASURY', [{
+    ...base,
+    flowDirection: 'IN',
+    accountingLabel: 'CIT In',
+  }]);
+  const [outgoing] = presentRows('KWACHA_TREASURY', [{
+    ...base,
+    flowDirection: 'OUT',
+    accountingLabel: 'CIT Out',
+  }]);
+  assert.equal(incoming.displays['REISSUABLE|K100|DENOMINATION'], 'K10.00');
+  assert.equal(outgoing.displays['REISSUABLE|K100|DENOMINATION'], 'K10.00');
+  assert.equal(incoming.displays['REISSUABLE|TOTAL|SUBTOTAL'], '+ K10.00');
+  assert.equal(outgoing.displays['REISSUABLE|TOTAL|SUBTOTAL'], '- K10.00');
+  assert.equal(incoming.displays['TREASURY|GRAND|GRAND'], '+ K10.00');
+  assert.equal(outgoing.displays['TREASURY|GRAND|GRAND'], '- K10.00');
+  assert.equal(incoming.displays['COINS|TOTAL|SUBTOTAL'], '+ K0.00');
+  assert.equal(outgoing.displays['COINS|TOTAL|SUBTOTAL'], '- K0.00');
+});
 
 test('minor units stay exact where binary floats do not', () => {
   assert.equal(toMinor('0.10') + toMinor('0.20'), toMinor('0.30'));

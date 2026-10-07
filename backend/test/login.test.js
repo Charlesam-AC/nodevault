@@ -524,6 +524,72 @@ test('a vault custodian can amend an open line and a closed book stays locked', 
   assert.equal(updated.in_or_out, 'In');
   assert.equal(after.body.square_required, false);
   assert.notEqual(after.body.position.ZMW.display, before.body.position.ZMW.display);
+  assert.match(updated.displays['TREASURY|GRAND|GRAND'], /^\+ K/);
+
+  const turnedOut = await request(applicationPool, {
+    method: 'PATCH',
+    path: `/api/books/${bookId}/entries/${line.line_number}`,
+    token: custodian.body.token,
+    body: {
+      accounting_label: 'CIT Out',
+      line_reference: 'Vault slip',
+      flow_direction: 'OUT',
+      custodian_one_initials: 'C.A.',
+      custodian_two_initials: 'J.P.',
+      teller_coord_initials: 'M.K.',
+      amounts: { REISSUABLE: { K10: '10.00' } },
+    },
+  });
+  assert.equal(turnedOut.status, 200);
+  assert.ok(turnedOut.body.carriedLines.length > 0);
+  const outward = await request(applicationPool, {
+    path: `/api/books/${bookId}`,
+    token: custodian.body.token,
+  });
+  const outwardLine = outward.body.rows.find((row) => row.line_number === line.line_number);
+  const outwardBalance = outward.body.rows.find((row) => (
+    row.line_number > line.line_number && row.flow_direction === 'BAL'
+  ));
+  const inwardBalance = after.body.rows.find((row) => (
+    row.line_number > line.line_number && row.flow_direction === 'BAL'
+  ));
+  assert.equal(outwardLine.in_or_out, 'CIT Out');
+  assert.equal(outwardLine.flow_direction, 'OUT');
+  assert.equal(outwardLine.displays['TREASURY|GRAND|GRAND'], '- K10.00');
+  assert.equal(outwardLine.displays['REISSUABLE|TOTAL|SUBTOTAL'], '- K10.00');
+  assert.notEqual(
+    outwardLine.displays['TREASURY|GRAND|GRAND'],
+    updated.displays['TREASURY|GRAND|GRAND'],
+  );
+  assert.notEqual(
+    outwardBalance.displays['TREASURY|GRAND|GRAND'],
+    inwardBalance.displays['TREASURY|GRAND|GRAND'],
+  );
+  assert.notEqual(outward.body.position.ZMW.display, after.body.position.ZMW.display);
+
+  const turnedBack = await request(applicationPool, {
+    method: 'PATCH',
+    path: `/api/books/${bookId}/entries/${line.line_number}`,
+    token: custodian.body.token,
+    body: {
+      accounting_label: 'In',
+      line_reference: 'Vault slip',
+      flow_direction: 'IN',
+      custodian_one_initials: 'C.A.',
+      custodian_two_initials: 'J.P.',
+      teller_coord_initials: 'M.K.',
+      amounts,
+    },
+  });
+  assert.equal(turnedBack.status, 200);
+  const restored = await request(applicationPool, {
+    path: `/api/books/${bookId}`,
+    token: custodian.body.token,
+  });
+  const restoredLine = restored.body.rows.find((row) => row.line_number === line.line_number);
+  assert.equal(restoredLine.in_or_out, 'In');
+  assert.match(restoredLine.displays['TREASURY|GRAND|GRAND'], /^\+ K/);
+  assert.equal(restored.body.position.ZMW.display, after.body.position.ZMW.display);
 
   const teller = await postPassword(applicationPool, {
     email: 'teller.desk@demo-bank.example',
