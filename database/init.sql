@@ -39,6 +39,8 @@ CREATE TABLE branches (
   province VARCHAR(80),
   location_name VARCHAR(120),
   is_active BOOLEAN NOT NULL DEFAULT true,
+  permanently_closed BOOLEAN NOT NULL DEFAULT false,
+  CHECK (NOT permanently_closed OR NOT is_active),
   UNIQUE (tenant_id, branch_code),
   UNIQUE (tenant_id, branch_id)
 );
@@ -701,7 +703,7 @@ GRANT UPDATE (
   password_hash, closing_pin_hash, is_active
 ) ON nodevault_users TO nodevault_app;
 GRANT UPDATE (period_end) ON post_assignments TO nodevault_app;
-GRANT UPDATE (branch_code, branch_name, province, location_name, is_active) ON branches TO nodevault_app;
+GRANT UPDATE (branch_code, branch_name, province, location_name, is_active, permanently_closed) ON branches TO nodevault_app;
 GRANT UPDATE (status, closed_at) ON branch_vault_books TO nodevault_app;
 GRANT UPDATE (initialized_at, it_admin_frozen, entra_enabled) ON system_control TO nodevault_app;
 GRANT UPDATE (status, attempts, last_error, updated_at) ON dispatch_outbox TO nodevault_app;

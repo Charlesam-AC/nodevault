@@ -1195,7 +1195,7 @@ async function renderBranches() {
   }
   state.branches = register;
   document.getElementById('branch-copy').textContent = register.can_manage
-    ? 'Add a branch, correct its name and code, assign staff to it, or close it. The list includes branches published by First National Bank Zambia.'
+    ? 'Add a branch, correct its name and code, or assign staff to it. A closed branch can be reopened, or closed for good. The list includes branches published by First National Bank Zambia.'
     : 'Every branch on this bank, and the staff attached to each one.';
   document.getElementById('branch-add').hidden = !register.can_manage;
   document.getElementById('branch-edit').hidden = true;
@@ -1221,8 +1221,10 @@ async function renderBranches() {
     code.textContent = where ? `${branch.branch_code} · ${where}` : branch.branch_code;
     const people = document.createElement('p');
     people.className = 'staff-meta';
-    if (!branch.is_active) {
-      people.textContent = 'Closed.';
+    if (branch.permanently_closed) {
+      people.textContent = 'Closed for good.';
+    } else if (!branch.is_active) {
+      people.textContent = 'Closed. Reopen it, or close it for good.';
     } else if (!branch.staff.length) {
       people.textContent = 'No staff assigned.';
     } else {
@@ -1266,14 +1268,34 @@ async function renderBranches() {
       close.addEventListener('click', () => closeBranchDesk(branch));
       actions.append(edit, close);
       card.appendChild(actions);
-    } else if (register.can_manage) {
+    } else if (register.can_manage && !branch.permanently_closed) {
       const actions = document.createElement('div');
       actions.className = 'staff-actions';
       const reopen = document.createElement('button');
       reopen.type = 'button';
       reopen.textContent = 'Reopen branch';
       reopen.addEventListener('click', () => reopenBranchDesk(branch));
-      actions.appendChild(reopen);
+      const permanent = document.createElement('button');
+      permanent.type = 'button';
+      permanent.className = 'staff-quiet';
+      permanent.textContent = 'Close permanently';
+      permanent.addEventListener('click', () => {
+        actions.replaceChildren();
+        const warning = document.createElement('p');
+        warning.className = 'staff-meta';
+        warning.textContent = 'This cannot be reopened.';
+        const yes = document.createElement('button');
+        yes.type = 'button';
+        yes.textContent = 'Close for good';
+        yes.addEventListener('click', () => permanentlyCloseBranch(branch));
+        const no = document.createElement('button');
+        no.type = 'button';
+        no.className = 'staff-quiet';
+        no.textContent = 'Keep it closed';
+        no.addEventListener('click', () => renderBranches());
+        actions.append(warning, yes, no);
+      });
+      actions.append(reopen, permanent);
       card.appendChild(actions);
     }
     host.appendChild(card);
@@ -1319,6 +1341,23 @@ async function closeBranchDesk(branch) {
   try {
     await api(`/api/branches/${branch.branch_id}`, { method: 'DELETE' });
     note.textContent = `${branch.branch_name} is closed.`;
+    await enterDesk(state.businessDate || undefined);
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
+async function permanentlyCloseBranch(branch) {
+  const error = document.getElementById('branch-error');
+  const note = document.getElementById('branch-note');
+  error.textContent = '';
+  note.textContent = '';
+  try {
+    await api(`/api/branches/${branch.branch_id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ permanently_closed: true }),
+    });
+    note.textContent = `${branch.branch_name} is closed for good.`;
     await enterDesk(state.businessDate || undefined);
   } catch (err) {
     error.textContent = err.message;

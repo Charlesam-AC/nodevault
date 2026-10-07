@@ -1741,3 +1741,4 @@ body:not(.is-gate) #desk-view button[type="submit"]:active:not(:disabled),
 @media (max-width: 860px) {
   .signoff { display: grid; grid-template-columns: 1fr; }
 }
+.staff-actions .staff-meta { flex: 1 1 100%; margin: 0.15rem 0 0; }

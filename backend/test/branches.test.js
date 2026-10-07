@@ -175,6 +175,46 @@ test('the master admin can add a branch, assign a person, and close it', async (
   });
   assert.equal(closed.status, 200);
   assert.equal(closed.body.is_active, false);
+  assert.equal(closed.body.permanently_closed, false);
+  const reopened = await request(applicationPool, {
+    method: 'PATCH',
+    path: `/api/branches/${created.body.branch_id}`,
+    token,
+    body: { is_active: true },
+  });
+  assert.equal(reopened.status, 200);
+  assert.equal(reopened.body.is_active, true);
+  const shutAgain = await request(applicationPool, {
+    method: 'DELETE',
+    path: `/api/branches/${created.body.branch_id}`,
+    token,
+  });
+  assert.equal(shutAgain.status, 200);
+  const permanent = await request(applicationPool, {
+    method: 'PATCH',
+    path: `/api/branches/${created.body.branch_id}`,
+    token,
+    body: { permanently_closed: true },
+  });
+  assert.equal(permanent.status, 200);
+  assert.equal(permanent.body.permanently_closed, true);
+  assert.equal(permanent.body.is_active, false);
+  const refusedReopen = await request(applicationPool, {
+    method: 'PATCH',
+    path: `/api/branches/${created.body.branch_id}`,
+    token,
+    body: { is_active: true },
+  });
+  assert.equal(refusedReopen.status, 409);
+  assert.equal(refusedReopen.body.error, 'BRANCH_PERMANENT');
+  const undone = await request(applicationPool, {
+    method: 'PATCH',
+    path: `/api/branches/${created.body.branch_id}`,
+    token,
+    body: { permanently_closed: false },
+  });
+  assert.equal(undone.status, 409);
+  assert.equal(undone.body.error, 'BRANCH_PERMANENT');
   const staff = await request(applicationPool, { path: '/api/staff', token });
   assert.equal(staff.body.branches.some((branch) => branch.branch_code === '260099'), false);
 

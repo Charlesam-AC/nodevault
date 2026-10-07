@@ -86,7 +86,7 @@ async function loadBranch(db, tenantId, branchId) {
     throw new VaultError('NOT_FOUND', 'That branch is not on this bank', 404);
   }
   const result = await db.query(
-    `SELECT branch_id, branch_code, branch_name, province, location_name, is_active
+    `SELECT branch_id, branch_code, branch_name, province, location_name, is_active, permanently_closed
      FROM branches
      WHERE tenant_id = $1 AND branch_id = $2`,
     [tenantId, id],
@@ -103,6 +103,7 @@ function publicBranch(row, staff) {
     province: row.province,
     location_name: row.location_name,
     is_active: row.is_active,
+    permanently_closed: Boolean(row.permanently_closed),
     open_books: Number(row.open_books || 0),
     staff,
   };
@@ -112,14 +113,14 @@ async function listBranches(db, actor) {
   assertReader(actor);
   const [branches, people] = await Promise.all([
     db.query(
-      `SELECT b.branch_id, b.branch_code, b.branch_name, b.province, b.location_name, b.is_active,
+      `SELECT b.branch_id, b.branch_code, b.branch_name, b.province, b.location_name, b.is_active, b.permanently_closed,
               (
                 SELECT COUNT(*)::int FROM branch_vault_books v
                 WHERE v.tenant_id = b.tenant_id AND v.branch_id = b.branch_id AND v.status = 'OPEN'
               ) AS open_books
        FROM branches b
        WHERE b.tenant_id = $1
-       ORDER BY b.is_active DESC, b.branch_name`,
+       ORDER BY b.is_active DESC, b.permanently_closed, b.branch_name`,
       [actor.tenantId],
     ),
     db.query(
@@ -178,7 +179,15 @@ async function addBranch(db, actor, body) {
       detail: { branch_id: branchId, branch_code: code, branch_name: name },
     });
     await client.query('COMMIT');
-    return { branch_id: branchId, branch_code: code, branch_name: name, province, location_name: location, is_active: true };
+    return {
+      branch_id: branchId,
+      branch_code: code,
+      branch_name: name,
+      province,
+      location_name: location,
+      is_active: true,
+      permanently_closed: false,
+    };
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_rollbackError) { /* already aborted */ }
     throw rethrowBranch(error);
@@ -195,9 +204,23 @@ async function updateBranch(db, actor, branchId, body) {
   if (Object.prototype.hasOwnProperty.call(body, 'branch_name')) next.branch_name = cleanName(body.branch_name);
   if (Object.prototype.hasOwnProperty.call(body, 'province')) next.province = cleanPlace(body.province, 'Province');
   if (Object.prototype.hasOwnProperty.call(body, 'location_name')) next.location_name = cleanPlace(body.location_name, 'Town');
-  if (Object.prototype.hasOwnProperty.call(body, 'is_active')) {
+  if (Object.prototype.hasOwnProperty.call(body, 'permanently_closed')) {
+    if (body.permanently_closed !== true) {
+      throw new VaultError('BRANCH_PERMANENT', 'A permanent close cannot be undone', 409);
+    }
+    if (body.is_active === true) {
+      throw new VaultError('INVALID_BRANCH', 'A branch closed for good stays closed');
+    }
+    await assertCanClose(db, actor.tenantId, branch.branch_id);
+    next.permanently_closed = true;
+    next.is_active = false;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'is_active') && !next.permanently_closed) {
     if (typeof body.is_active !== 'boolean') {
       throw new VaultError('INVALID_BRANCH', 'Say whether this branch stays open');
+    }
+    if (body.is_active === true && branch.permanently_closed) {
+      throw new VaultError('BRANCH_PERMANENT', 'This branch is closed for good and cannot be reopened', 409);
     }
     if (body.is_active === false) await assertCanClose(db, actor.tenantId, branch.branch_id);
     next.is_active = body.is_active;
@@ -220,7 +243,9 @@ async function updateBranch(db, actor, branchId, body) {
     );
     await recordAudit(client, {
       tenantId: actor.tenantId,
-      eventType: next.is_active === false ? 'BRANCH_CLOSED' : 'BRANCH_UPDATED',
+      eventType: next.permanently_closed
+        ? 'BRANCH_PERMANENTLY_CLOSED'
+        : (next.is_active === false ? 'BRANCH_CLOSED' : 'BRANCH_UPDATED'),
       actorUserIds: [actor.userId],
       detail: { branch_id: Number(branch.branch_id), fields: Object.keys(next) },
     });
@@ -261,6 +286,9 @@ async function closeBranch(db, actor, branchId) {
 async function assignBranch(db, actor, branchId, userId) {
   assertManager(actor);
   const branch = await loadBranch(db, actor.tenantId, branchId);
+  if (branch.permanently_closed) {
+    throw new VaultError('BRANCH_PERMANENT', 'This branch is closed for good', 409);
+  }
   if (!branch.is_active) {
     throw new VaultError('BRANCH_CLOSED', 'Reopen this branch before assigning staff', 409);
   }
