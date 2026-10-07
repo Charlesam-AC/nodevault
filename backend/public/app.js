@@ -603,6 +603,26 @@ async function submitHandover(event) {
   }
 }
 
+function entraCopy(enabled) {
+  return enabled
+    ? 'Directory sign-in is on. Turn it off to leave the desk password as the only door. Break-glass still accepts the directory assertion.'
+    : 'Directory sign-in is off. The desk password is the door. Break-glass still accepts the directory assertion.';
+}
+
+async function renderEntraAdmin() {
+  const panel = document.getElementById('entra-admin');
+  if (!panel || state.me?.system_role !== 'IT_SUPER_ADMIN') {
+    if (panel) panel.hidden = true;
+    return;
+  }
+  const setting = await api('/api/auth/entra');
+  panel.hidden = false;
+  const button = document.getElementById('entra-toggle');
+  button.setAttribute('aria-pressed', setting.entraEnabled ? 'true' : 'false');
+  button.textContent = setting.entraEnabled ? 'On' : 'Off';
+  document.getElementById('entra-admin-copy').textContent = entraCopy(setting.entraEnabled);
+}
+
 async function enterDesk() {
   state.me = await api('/api/me');
   const desk = await api('/api/books');
@@ -622,6 +642,7 @@ async function enterDesk() {
   } else {
     banner.hidden = true;
   }
+  await renderEntraAdmin();
   renderCalendar(desk.calendar || {});
   renderRotation(desk.rotation || { posts: [] });
   renderFlags(desk.carryFlags);
@@ -647,6 +668,7 @@ function showLogin() {
   deskView.hidden = true;
   document.body.classList.add('is-gate');
   document.getElementById('sign-out').hidden = true;
+  refreshGate().catch(() => {});
 }
 
 async function submitSignIn(form, error, request) {
@@ -822,26 +844,55 @@ if (themeSelect) {
   themeSelect.addEventListener('change', () => applyLedgerTheme(themeSelect.value));
 }
 
+function applyPublicConfig(config) {
+  const passwordForm = document.getElementById('password-form');
+  const entraFold = document.getElementById('entra-fold');
+  const entraOn = config.entraEnabled !== false;
+  passwordForm.hidden = !config.localLogin;
+  entraFold.hidden = !entraOn;
+  entraFold.open = entraOn && !config.localLogin;
+  entraFold.classList.toggle('entra-primary', entraOn && !config.localLogin);
+  const domain = config.enforcedDomain
+    ? `@${config.enforcedDomain}`
+    : 'each bank tenant domain';
+  const sample = config.enforcedDomain ? `name@${config.enforcedDomain}` : 'name@bank';
+  document.getElementById('password-email').placeholder = sample;
+  document.getElementById('email').placeholder = sample;
+  let hint = `Microsoft Entra sign-in is restricted to ${domain}.`;
+  if (config.localLogin && entraOn) hint = `Password and Entra sign-in are both restricted to ${domain}.`;
+  else if (config.localLogin) hint = `Password sign-in is restricted to ${domain}.`;
+  document.getElementById('domain-hint').textContent = hint;
+  document.getElementById('entra-hint').textContent = config.entraMode === 'mock'
+    ? 'This deployment checks a mock assertion, not a live Microsoft token.'
+    : 'Use your bank Microsoft Entra account.';
+}
+
+async function refreshGate() {
+  const config = await api('/api/public-config');
+  applyPublicConfig(config);
+}
+
+document.getElementById('entra-toggle').addEventListener('click', async () => {
+  const button = document.getElementById('entra-toggle');
+  const next = button.getAttribute('aria-pressed') !== 'true';
+  button.disabled = true;
+  try {
+    await api('/api/auth/entra', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled: next }),
+    });
+    await renderEntraAdmin();
+    await refreshGate();
+  } catch (err) {
+    document.getElementById('entra-admin-copy').textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
 async function boot() {
   try {
-    const config = await api('/api/public-config');
-    const passwordForm = document.getElementById('password-form');
-    const entraFold = document.getElementById('entra-fold');
-    passwordForm.hidden = !config.localLogin;
-    entraFold.open = !config.localLogin;
-    entraFold.classList.toggle('entra-primary', !config.localLogin);
-    const domain = config.enforcedDomain
-      ? `@${config.enforcedDomain}`
-      : 'each bank tenant domain';
-    const sample = config.enforcedDomain ? `name@${config.enforcedDomain}` : 'name@bank';
-    document.getElementById('password-email').placeholder = sample;
-    document.getElementById('email').placeholder = sample;
-    document.getElementById('domain-hint').textContent = config.localLogin
-      ? `Password and Entra sign-in are both restricted to ${domain}.`
-      : `Microsoft Entra sign-in is restricted to ${domain}.`;
-    document.getElementById('entra-hint').textContent = config.entraMode === 'mock'
-      ? 'This deployment checks a mock assertion, not a live Microsoft token.'
-      : 'Use your bank Microsoft Entra account.';
+    await refreshGate();
   } catch (_error) {
     document.getElementById('login-error').textContent = 'The desk configuration could not be read.';
   }

@@ -68,7 +68,12 @@ async function rejectFrozenAdmin(db, user, allowFrozenAdmin) {
   }
 }
 
-async function authenticateCorporateIdentity(db, { email, assertion, allowFrozenAdmin = false }) {
+async function authenticateCorporateIdentity(db, {
+  email,
+  assertion,
+  allowFrozenAdmin = false,
+  forBreakGlass = false,
+}) {
   const mode = process.env.ENTRA_MODE || 'mock';
   if (mode !== 'mock') {
     throw new VaultError(
@@ -86,6 +91,13 @@ async function authenticateCorporateIdentity(db, { email, assertion, allowFrozen
     throw new VaultError('ACCESS_DENIED', 'Access denied', 401);
   }
   assertCorporateDomain(user.work_email, user.corporate_domain);
+  if (!forBreakGlass) {
+    const { readEntraEnabled } = require('../services/entraToggle');
+    const enabled = await readEntraEnabled(db, user.tenant_id);
+    if (!enabled) {
+      throw new VaultError('ENTRA_DISABLED', 'Microsoft Entra sign-in is turned off.', 403);
+    }
+  }
   await rejectFrozenAdmin(db, user, allowFrozenAdmin);
   return user;
 }

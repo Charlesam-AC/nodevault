@@ -10,6 +10,7 @@ async function openBreakGlass(db, body, deps = {}) {
     email: body.admin_email,
     assertion: body.admin_assertion,
     allowFrozenAdmin: true,
+    forBreakGlass: true,
   });
   if (admin.system_role !== 'IT_SUPER_ADMIN') {
     throw new VaultError('WRONG_ROLE', 'Break-glass is for the IT super admin', 403);
@@ -29,10 +30,12 @@ async function openBreakGlass(db, body, deps = {}) {
   const c1 = await authenticateCorporateIdentity(db, {
     email: emails[0],
     assertion: body.custodian_one_assertion,
+    forBreakGlass: true,
   });
   const c2 = await authenticateCorporateIdentity(db, {
     email: emails[1],
     assertion: body.custodian_two_assertion,
+    forBreakGlass: true,
   });
   for (const custodian of [c1, c2]) {
     if (custodian.system_role !== 'VAULT_CUSTODIAN' || !custodian.is_active) {

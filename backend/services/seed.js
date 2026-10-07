@@ -81,10 +81,11 @@ async function seedDemo(db) {
     ids[email] = inserted.rows[0].user_id;
   }
 
+  const entraEnabled = String(process.env.AUTH_MODE || 'both').toLowerCase() !== 'local';
   await db.query(
-    `INSERT INTO system_control (tenant_id, initialized_at, it_admin_frozen)
-     VALUES ($1, now(), true)`,
-    [tenantId],
+    `INSERT INTO system_control (tenant_id, initialized_at, it_admin_frozen, entra_enabled)
+     VALUES ($1, now(), true, $2)`,
+    [tenantId, entraEnabled],
   );
   await recordAudit(db, {
     tenantId,

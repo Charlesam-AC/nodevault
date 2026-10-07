@@ -21,6 +21,7 @@ const { holdersForDate, rotationView, captureHandover } = require('./services/ro
 const { getBookView, insertLedgerRow } = require('./services/ledger');
 const { executeThreePersonVaultLock, dispatchClosing } = require('./services/closing');
 const { openBreakGlass } = require('./services/breakglass');
+const { readEntraEnabled, setEntraEnabled } = require('./services/entraToggle');
 const { toDecimalString } = require('./services/money');
 const {
   authenticateCorporateIdentity,
@@ -76,15 +77,27 @@ function buildApp(db) {
     }
   }));
 
-  app.get('/api/public-config', (_req, res) => {
+  app.get('/api/public-config', asyncRoute(async (_req, res) => {
     res.json({
       product: 'NodeVault',
       entraMode: process.env.ENTRA_MODE || 'mock',
       enforcedDomain: process.env.ENFORCED_CORPORATE_DOMAIN || '',
       authMode: process.env.AUTH_MODE || 'both',
       localLogin: localLoginEnabled(),
+      entraEnabled: await readEntraEnabled(db),
     });
-  });
+  }));
+
+  app.get('/api/auth/entra', guard, asyncRoute(async (req, res) => {
+    res.json({
+      entraEnabled: await readEntraEnabled(db, req.user.tenantId),
+      canToggle: req.user.role === 'IT_SUPER_ADMIN',
+    });
+  }));
+
+  app.put('/api/auth/entra', guard, asyncRoute(async (req, res) => {
+    res.json(await setEntraEnabled(db, req.user, req.body.enabled));
+  }));
 
   app.get('/api/auth/demo-directory', asyncRoute(async (_req, res) => {
     if ((process.env.ENTRA_MODE || 'mock') !== 'mock' || process.env.SEED_DEMO_DATA !== 'true') {

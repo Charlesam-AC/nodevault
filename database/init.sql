@@ -68,7 +68,8 @@ CREATE TABLE nodevault_users (
 CREATE TABLE system_control (
   tenant_id INT PRIMARY KEY REFERENCES bank_tenants (tenant_id),
   initialized_at TIMESTAMPTZ,
-  it_admin_frozen BOOLEAN NOT NULL DEFAULT false
+  it_admin_frozen BOOLEAN NOT NULL DEFAULT false,
+  entra_enabled BOOLEAN NOT NULL DEFAULT true
 );
 
 -- The weekly head-teller coordinator is an assignment, not "any teller".
@@ -643,7 +644,7 @@ GRANT SELECT, INSERT ON bank_tenants, branches, nodevault_users, system_control,
 
 GRANT UPDATE (failed_login_count, locked_until) ON nodevault_users TO nodevault_app;
 GRANT UPDATE (status, closed_at) ON branch_vault_books TO nodevault_app;
-GRANT UPDATE (initialized_at, it_admin_frozen) ON system_control TO nodevault_app;
+GRANT UPDATE (initialized_at, it_admin_frozen, entra_enabled) ON system_control TO nodevault_app;
 GRANT UPDATE (status, attempts, last_error, updated_at) ON dispatch_outbox TO nodevault_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON mock_core_positions TO nodevault_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON denomination_catalogue TO nodevault_app;

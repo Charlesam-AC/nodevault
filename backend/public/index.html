@@ -69,14 +69,21 @@
           </div>
           <p id="login-error" class="error" role="alert"></p>
           <button type="submit">Enter with Entra</button>
-          <button type="button" id="show-break-glass" class="ghost">Emergency break-glass</button>
         </form>
       </details>
+      <button type="button" id="show-break-glass" class="ghost login-break">Emergency break-glass</button>
       <p class="login-legal">© 2026 NodeVault · Charles Amulike</p>
     </section>
 
     <section id="desk-view" hidden>
       <div id="maintenance-banner" class="banner" hidden></div>
+      <section id="entra-admin" class="entra-admin" hidden>
+        <div>
+          <h3>Microsoft Entra</h3>
+          <p id="entra-admin-copy"></p>
+        </div>
+        <button type="button" id="entra-toggle" aria-pressed="true">On</button>
+      </section>
       <section id="calendar-panel" class="calendar" aria-label="Non-working days"></section>
       <section id="rotation-panel" class="rotation" aria-label="Post rotation"></section>
       <section id="handover-panel" class="handover" hidden></section>
