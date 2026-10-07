@@ -76,9 +76,59 @@ main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
 
 .desk-bar { display: flex; gap: 1.5rem; align-items: flex-start; }
 .login-screen {
-  width: min(100%, 26.5rem);
+  width: min(100%, 68rem);
   margin: auto;
-  padding: 2.5rem 1.15rem 2rem;
+  padding: 2rem 1.25rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(20rem, 26.5rem);
+  gap: 2.75rem;
+  align-items: center;
+}
+.login-story {
+  background: #e7f3f6;
+  color: #163044;
+  border-radius: 18px;
+  padding: 1.6rem 1.5rem 1.4rem;
+}
+.login-story .kicker { color: #1c6e90; }
+.login-story h2 {
+  margin: 0.35rem 0 0.75rem;
+  color: #163044;
+  font-family: Fraunces, Palatino, Georgia, serif;
+  font-weight: 560;
+  font-size: clamp(2.6rem, 4vw, 3.6rem);
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+}
+.login-lead { color: #3d5568; font-size: 1.02rem; line-height: 1.45; max-width: 36rem; }
+.login-books {
+  list-style: none;
+  padding: 0;
+  margin: 1.15rem 0 0.9rem;
+  display: grid;
+  gap: 0.55rem;
+}
+.login-books li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.85rem;
+  row-gap: 0.05rem;
+  padding: 0.7rem 0.85rem;
+  background: #d3ebf2;
+  border: 1px solid #9ec9d6;
+  border-radius: 8px;
+}
+.login-books span {
+  grid-row: span 2;
+  align-self: center;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  color: #1c6e90;
+  font-weight: 500;
+}
+.login-books strong { font-family: Fraunces, Palatino, Georgia, serif; font-weight: 560; font-size: 1.15rem; }
+.login-books em { font-style: normal; color: #3d5568; font-size: 0.9rem; }
+.login-story .hint { color: #3d5568; margin: 0; }
+.login-panel {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -93,7 +143,7 @@ main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
   background: transparent;
   box-shadow: 0 0 36px 8px rgba(186, 255, 244, 0.22);
 }
-.login-screen h2 {
+.login-panel h2 {
   margin: 0;
   color: #fff;
   font-family: "Public Sans", "Segoe UI", sans-serif;
@@ -194,8 +244,7 @@ main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
 }
 .login-card button[type="submit"]:disabled,
 .entra-fold button[type="submit"]:disabled { opacity: 0.65; cursor: progress; }
-.login-screen .hint { color: #d5e7e8; font-size: 0.82rem; }
-.login-screen #domain-hint { margin-top: 1.15rem; }
+.login-screen .hint { font-size: 0.92rem; }
 .login-legal { margin: 1.1rem 0 0; color: rgba(232, 244, 244, 0.72); font-size: 0.78rem; }
 .entra-fold {
   width: 100%;
@@ -214,6 +263,7 @@ main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
   color: #e7f4f4;
 }
 .entra-fold summary::-webkit-details-marker { display: none; }
+.entra-fold .hint { color: #d5e7e8; }
 .entra-fold .fold-title { font-size: 0.95rem; }
 .entra-fold .fold-action { font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: #9fd4cc; }
 .entra-fold .fold-action::before { content: "Open"; }
@@ -581,7 +631,8 @@ footer { padding: 1.5rem 1.25rem 2rem; color: var(--ink-soft); font-size: 0.82re
   .desk-bar, .mast, .signoff, .pin-grid, .entra-admin { flex-direction: column; display: flex; }
   .signoff, .pin-grid, .rotation, .handover-post, .calendar-list, .calendar-forms { display: grid; grid-template-columns: 1fr; }
   .mast-meta { text-align: left; }
-  .login-screen { width: min(100% - 1.5rem, 26.5rem); padding-top: 1.5rem; }
-  .login-screen h2 { font-size: 1.55rem; }
+  .login-screen { width: min(100% - 1.25rem, 40rem); grid-template-columns: 1fr; gap: 1.5rem; padding-top: 1.25rem; }
+  .login-story h2 { font-size: 2.35rem; }
+  .login-panel h2 { font-size: 1.55rem; }
   .card, .login-stack, dialog { width: 100%; }
 }

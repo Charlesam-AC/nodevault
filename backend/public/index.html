@@ -27,6 +27,30 @@
 
   <main>
     <section id="login-view" class="login-screen">
+      <div class="login-story">
+        <p class="kicker">Branch treasury desk</p>
+        <h2>Three books.<br>One close.</h2>
+        <p class="login-lead">Kwacha, foreign notes, and Bancs. Amounts, not pieces. The book locks only when both vault custodians and the weekly coordinator sign, and the core position matches to the ngwee.</p>
+        <ol class="login-books">
+          <li>
+            <span>01</span>
+            <strong>Kwacha</strong>
+            <em>Re-issuable notes and coins</em>
+          </li>
+          <li>
+            <span>02</span>
+            <strong>Foreign notes</strong>
+            <em>Euro, sterling, dollar, rand</em>
+          </li>
+          <li>
+            <span>03</span>
+            <strong>Bancs</strong>
+            <em>Same sheet, separate balances</em>
+          </li>
+        </ol>
+        <p class="hint" id="domain-hint"></p>
+      </div>
+      <div class="login-panel">
       <img class="login-mark" src="/logo.png" alt="">
       <h2>Welcome to NodeVault</h2>
       <p class="login-please">Please sign in</p>
@@ -49,7 +73,6 @@
         <p id="password-error" class="error" role="alert"></p>
         <button type="submit">Log in</button>
       </form>
-      <p class="hint" id="domain-hint"></p>
       <details id="entra-fold" class="entra-fold">
         <summary>
           <span class="fold-title">Microsoft Entra</span>
@@ -73,6 +96,7 @@
       </details>
       <button type="button" id="show-break-glass" class="ghost login-break">Emergency break-glass</button>
       <p class="login-legal">© 2026 NodeVault · Charles Amulike</p>
+      </div>
     </section>
 
     <section id="desk-view" hidden>
