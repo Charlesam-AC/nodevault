@@ -233,7 +233,7 @@ const BOOK_TITLES = {
 
 function cadenceLabel(post) {
   if (post.cadence === 'WEEKLY') return 'Weekly';
-  if (post.cadence === 'FORTNIGHTLY') return 'Every two weeks';
+  if (post.cadence === 'FORTNIGHTLY') return 'Bi-weekly';
   if (post.cadence === 'MONTHLY') return 'Monthly';
   return `Every ${post.customDays} days`;
 }
@@ -243,18 +243,23 @@ function renderRotation(rotation) {
   host.replaceChildren();
   for (const post of rotation.posts || []) {
     const card = document.createElement('article');
+    card.className = 'rounded border border-gray-200 bg-white px-4 py-3 shadow-sm';
     const title = document.createElement('h3');
+    title.className = 'text-sm font-semibold text-gray-900';
     title.textContent = post.label;
-    const cadence = document.createElement('p');
-    cadence.textContent = cadenceLabel(post);
     const holder = document.createElement('p');
+    holder.className = 'mt-2 text-sm text-gray-800';
     holder.textContent = post.current && !post.current.unassigned
-      ? `${post.current.fullLegalName} · ${post.current.employeeId} · ${post.current.initials}`
-      : 'No holder for this period';
+      ? `${post.current.fullLegalName} | ${post.current.employeeId} (${post.current.initials})`
+      : 'No holder for this period | -';
     const dates = document.createElement('p');
+    dates.className = 'mt-1 text-sm text-gray-600';
     const span = post.current || post.next;
     dates.textContent = span ? `${span.periodStart} to ${span.periodEnd}` : '';
-    card.append(title, cadence, holder, dates);
+    const cadence = document.createElement('p');
+    cadence.className = 'mt-2 text-sm text-gray-700';
+    cadence.textContent = `Rotates: ${cadenceLabel(post)}`;
+    card.append(title, holder, dates, cadence);
     host.appendChild(card);
   }
 }
@@ -270,17 +275,18 @@ function renderCalendar(calendar) {
   const host = document.getElementById('calendar-panel');
   host.replaceChildren();
   const title = document.createElement('h3');
+  title.className = 'mb-2 text-base font-semibold text-gray-900';
   title.textContent = 'Non-working days';
-  const note = document.createElement('p');
-  note.className = 'hint';
-  const banner = calendar.nonWorking
-    ? `Today is not a working day (${calendar.nonWorking.name}). No new book opens.`
-    : 'Zambian public holidays, gazetted days, and closures set by the regional operations manager.';
-  note.textContent = banner;
-  host.append(title, note);
+  host.append(title);
+  if (calendar.nonWorking) {
+    const note = document.createElement('p');
+    note.className = 'mb-2 text-sm text-gray-600';
+    note.textContent = `Today is not a working day (${calendar.nonWorking.name}). No new book opens.`;
+    host.append(note);
+  }
 
   const list = document.createElement('ul');
-  list.className = 'calendar-list';
+  list.className = 'grid grid-cols-1 gap-x-10 md:grid-cols-2';
   const items = [];
   for (const holiday of calendar.holidays || []) {
     const label = holiday.observance === 'SUNDAY_FOLLOWING'
@@ -307,10 +313,13 @@ function renderCalendar(calendar) {
   }
   for (const item of items) {
     const li = document.createElement('li');
+    li.className = 'flex items-baseline gap-4 border-b border-gray-200 py-2 text-sm';
     const when = document.createElement('time');
     when.dateTime = item.date;
+    when.className = 'w-28 shrink-0 font-mono text-[13px] text-gray-800';
     when.textContent = item.date;
     const text = document.createElement('span');
+    text.className = 'text-gray-700';
     text.textContent = `${item.label} · ${item.kind}`;
     li.append(when, text);
     list.appendChild(li);
@@ -319,7 +328,7 @@ function renderCalendar(calendar) {
 
   if (!calendar.canManage) return;
   const forms = document.createElement('div');
-  forms.className = 'calendar-forms';
+  forms.className = 'mt-4 grid gap-4 border-t border-gray-200 pt-4 md:grid-cols-2';
   forms.append(closureForm(calendar), gazetteForm());
   const pending = (calendar.closures || []).filter((row) => row.cancellable);
   const gazettes = (calendar.gazetted || []).filter((row) => row.cancellable);
@@ -517,57 +526,72 @@ function renderHandover(rotation, deskOpen) {
   }
   host.hidden = false;
   const title = document.createElement('h3');
+  title.className = 'text-base font-semibold text-gray-900';
   title.textContent = deskOpen
     ? `Handover due ${rotation.dueDate}`
     : 'This cycle stays shut until handover is acknowledged';
-  const note = document.createElement('p');
-  note.textContent = 'Outgoing and incoming holders each acknowledge with their closing PIN. Employee ID and initials are taken from the directory.';
-  host.append(title, note);
+  host.append(title);
   const form = document.createElement('form');
   form.id = 'handover-form';
+  form.className = 'mt-3';
   for (const post of due) {
     const block = document.createElement('div');
-    block.className = 'handover-post';
+    block.className = 'handover-post mt-3 grid gap-3';
     block.dataset.post = post.postCode;
-    const heading = document.createElement('h3');
-    heading.textContent = post.label;
-    const outgoing = document.createElement('p');
-    outgoing.textContent = post.outgoing
-      ? `Outgoing ${post.outgoing.fullLegalName} · ${post.outgoing.initials}`
-      : 'Outgoing holder is not on the calendar';
+    const row = document.createElement('div');
+    row.className = 'grid gap-3 md:grid-cols-2';
     const candidates = state.directory.filter((user) => user.system_role === post.role && user.user_id !== post.outgoing?.userId);
     const select = document.createElement('select');
     select.dataset.field = 'incoming';
+    select.className = 'h-10 rounded border border-gray-300 bg-white px-2 text-sm text-gray-800';
     for (const user of candidates) {
       const option = document.createElement('option');
       option.value = user.user_id;
-      option.textContent = `${user.full_legal_name} · ${user.employee_id} · ${user.two_letter_initials}`;
+      option.textContent = `${user.full_legal_name}: ${user.employee_id} | ${user.two_letter_initials}`;
       option.dataset.employeeId = user.employee_id;
       option.dataset.initials = user.two_letter_initials;
       select.appendChild(option);
     }
+    const outgoing = document.createElement('input');
+    outgoing.readOnly = true;
+    outgoing.className = 'h-10 rounded border border-gray-300 bg-gray-50 px-3 text-sm text-gray-700';
+    const outgoingName = post.postCode === 'HEAD_TELLER' ? 'Outgoing Coordinator' : 'Outgoing custodian';
+    outgoing.value = post.outgoing
+      ? `${outgoingName}: ${post.outgoing.initials}`
+      : 'Outgoing holder is not on the calendar';
+    const pins = document.createElement('div');
+    pins.className = 'grid gap-3 md:grid-cols-2';
     const outgoingPin = document.createElement('input');
     outgoingPin.type = 'password';
     outgoingPin.placeholder = 'Outgoing closing PIN';
     outgoingPin.autocomplete = 'off';
     outgoingPin.required = true;
     outgoingPin.dataset.field = 'outgoing-pin';
+    outgoingPin.className = 'h-10 rounded border border-gray-300 px-3 text-sm';
     const incomingPin = document.createElement('input');
     incomingPin.type = 'password';
     incomingPin.placeholder = 'Incoming closing PIN';
     incomingPin.autocomplete = 'off';
     incomingPin.required = true;
     incomingPin.dataset.field = 'incoming-pin';
-    block.append(heading, outgoing, select, outgoingPin, incomingPin);
+    incomingPin.className = 'h-10 rounded border border-gray-300 px-3 text-sm';
+    pins.append(outgoingPin, incomingPin);
+    row.append(select, outgoing);
+    block.append(row, pins);
     form.appendChild(block);
   }
   const error = document.createElement('p');
   error.id = 'handover-error';
-  error.className = 'error';
+  error.className = 'error mt-3 flex items-start gap-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700';
+  error.setAttribute('role', 'alert');
+  const actions = document.createElement('div');
+  actions.className = 'mt-3 flex justify-end';
   const button = document.createElement('button');
   button.type = 'submit';
-  button.textContent = 'Acknowledge handover';
-  form.append(error, button);
+  button.className = '!mt-0 rounded bg-[#102833] px-4 py-2 text-sm font-medium text-white';
+  button.textContent = 'Acknowledge Handover';
+  form.append(error, actions);
+  actions.appendChild(button);
   form.addEventListener('submit', submitHandover);
   host.appendChild(form);
 }
@@ -609,41 +633,31 @@ async function submitHandover(event) {
 
 function entraCopy(enabled) {
   return enabled
-    ? 'Directory sign-in is on. Turn it off to leave the desk password as the only door. Break-glass still accepts the directory assertion.'
-    : 'Directory sign-in is off. The desk password is the door. Break-glass still accepts the directory assertion.';
+    ? 'Directory sign-in is on. Turn it off to allow manual desk passwords. Break-glass requires manual override.'
+    : 'Directory sign-in is off. Manual desk passwords are the door. Break-glass still requires the directory assertion.';
 }
 
 async function renderEntraAdmin() {
   const panel = document.getElementById('entra-admin');
-  if (!panel || state.me?.system_role !== 'IT_SUPER_ADMIN') {
+  const show = state.me?.system_role === 'IT_SUPER_ADMIN' || state.me?.acting_as || state.me?.can_act_as;
+  if (!panel || !show) {
     if (panel) panel.hidden = true;
     return;
   }
   const setting = await api('/api/auth/entra');
   panel.hidden = false;
   const button = document.getElementById('entra-toggle');
-  button.setAttribute('aria-pressed', setting.entraEnabled ? 'true' : 'false');
-  button.textContent = setting.entraEnabled ? 'On' : 'Off';
-  document.getElementById('entra-admin-copy').textContent = entraCopy(setting.entraEnabled);
+  const on = Boolean(setting.entraEnabled);
+  button.setAttribute('aria-pressed', on ? 'true' : 'false');
+  button.classList.toggle('bg-slate-800', on);
+  button.classList.toggle('bg-slate-300', !on);
+  const knob = button.querySelector('span');
+  knob.classList.toggle('translate-x-5', on);
+  knob.classList.toggle('translate-x-0', !on);
+  document.getElementById('entra-admin-copy').textContent = entraCopy(on);
 }
 
-function renderActAs() {
-  const panel = document.getElementById('act-as');
-  const banner = document.getElementById('acting-banner');
-  if (!panel || !banner) return;
-  if (state.me?.acting_as) {
-    panel.hidden = true;
-    banner.hidden = false;
-    document.getElementById('acting-copy').textContent = `Testing as ${state.me.full_legal_name} · ${state.me.system_role}.`;
-    document.getElementById('session-user').textContent = `Testing as ${state.me.full_legal_name} · ${state.me.system_role}`;
-    return;
-  }
-  banner.hidden = true;
-  if (!state.me?.can_act_as) {
-    panel.hidden = true;
-    return;
-  }
-  panel.hidden = false;
+function fillActAsSelect() {
   const select = document.getElementById('act-as-user');
   const current = select.value;
   select.replaceChildren();
@@ -651,10 +665,38 @@ function renderActAs() {
     if (user.system_role === 'IT_SUPER_ADMIN' || user.user_id === state.me.user_id) continue;
     const option = document.createElement('option');
     option.value = String(user.user_id);
-    option.textContent = `${user.full_legal_name} · ${user.system_role}`;
+    option.textContent = `${user.full_legal_name} (${user.system_role})`;
     select.appendChild(option);
   }
   if (current && [...select.options].some((option) => option.value === current)) select.value = current;
+}
+
+function renderActAs() {
+  const panel = document.getElementById('act-as');
+  const banner = document.getElementById('acting-banner');
+  const exit = document.getElementById('acting-exit');
+  const icon = document.getElementById('acting-icon');
+  if (!panel || !banner) return;
+  if (state.me?.acting_as) {
+    banner.hidden = false;
+    panel.hidden = false;
+    if (exit) exit.hidden = false;
+    if (icon) icon.hidden = false;
+    document.getElementById('acting-copy').textContent = `Testing as ${state.me.full_legal_name} (${state.me.system_role}). Simulating administrative and operational views.`;
+    document.getElementById('session-user').textContent = `Testing as ${state.me.full_legal_name} · ${state.me.system_role}`;
+    fillActAsSelect();
+    return;
+  }
+  banner.hidden = true;
+  if (exit) exit.hidden = true;
+  if (icon) icon.hidden = true;
+  if (!state.me?.can_act_as) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  document.getElementById('acting-copy').textContent = 'Open the desk as a staff member. A vault custodian or the weekly head teller can write a line.';
+  fillActAsSelect();
 }
 
 function canPostEntries() {
@@ -828,6 +870,7 @@ function showLogin() {
   sessionStorage.removeItem('nodevault_token');
   loginView.hidden = false;
   deskView.hidden = true;
+  document.getElementById('acting-banner').hidden = true;
   document.body.classList.add('is-gate');
   document.getElementById('sign-out').hidden = true;
   refreshGate().catch(() => {});
@@ -1104,8 +1147,7 @@ document.getElementById('act-as-open').addEventListener('click', async () => {
   }
 });
 
-document.getElementById('acting-return').addEventListener('click', async () => {
-  const button = document.getElementById('acting-return');
+async function leaveSimulation(button) {
   button.disabled = true;
   try {
     const result = await api('/api/auth/act-as/return', { method: 'POST', body: '{}' });
@@ -1113,14 +1155,25 @@ document.getElementById('acting-return').addEventListener('click', async () => {
     sessionStorage.setItem('nodevault_token', result.token);
     await enterDesk();
   } catch (err) {
-    document.getElementById('acting-copy').textContent = err.message;
+    document.getElementById('act-as-error').textContent = err.message;
   } finally {
     button.disabled = false;
   }
+}
+
+document.getElementById('acting-return').addEventListener('click', () => {
+  leaveSimulation(document.getElementById('acting-return'));
+});
+document.getElementById('acting-exit').addEventListener('click', () => {
+  leaveSimulation(document.getElementById('acting-exit'));
 });
 
 document.getElementById('entra-toggle').addEventListener('click', async () => {
   const button = document.getElementById('entra-toggle');
+  if (state.me?.system_role !== 'IT_SUPER_ADMIN') {
+    document.getElementById('entra-admin-copy').textContent = 'Return to Admin to change Microsoft Entra.';
+    return;
+  }
   const next = button.getAttribute('aria-pressed') !== 'true';
   button.disabled = true;
   try {

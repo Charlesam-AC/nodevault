@@ -2,14 +2,18 @@ const { VaultError } = require('./errors');
 const { isMasterAdmin, signSession } = require('../middleware/auth');
 const { recordAudit } = require('./audit');
 
-function assertMasterAdmin(actor) {
-  if (!actor || actor.actorUserId || !isMasterAdmin({ work_email: actor.email })) {
-    throw new VaultError(
-      'WRONG_ROLE',
-      'Only the master admin can open the desk as another person.',
-      403,
-    );
+async function actingAdmin(db, actor) {
+  if (!actor) return null;
+  if (!actor.actorUserId) {
+    return isMasterAdmin({ work_email: actor.email }) ? actor : null;
   }
+  const admin = await loadStaff(db, actor.tenantId, actor.actorUserId);
+  if (!admin || !admin.is_active || !isMasterAdmin(admin)) return null;
+  return {
+    userId: Number(admin.user_id),
+    tenantId: Number(admin.tenant_id),
+    email: admin.work_email,
+  };
 }
 
 async function loadStaff(db, tenantId, userId) {
@@ -25,7 +29,14 @@ async function loadStaff(db, tenantId, userId) {
 }
 
 async function actAsUser(db, actor, targetUserId) {
-  assertMasterAdmin(actor);
+  const admin = await actingAdmin(db, actor);
+  if (!admin) {
+    throw new VaultError(
+      'WRONG_ROLE',
+      'Only the master admin can open the desk as another person.',
+      403,
+    );
+  }
   const targetId = Number(targetUserId);
   if (!Number.isInteger(targetId)) {
     throw new VaultError('NOT_FOUND', 'That staff member is not on this desk.', 404);
@@ -34,7 +45,7 @@ async function actAsUser(db, actor, targetUserId) {
   if (!target || !target.is_active) {
     throw new VaultError('NOT_FOUND', 'That staff member is not on this desk.', 404);
   }
-  if (Number(target.user_id) === Number(actor.userId)) {
+  if (Number(target.user_id) === Number(admin.userId) || Number(target.user_id) === Number(actor.userId)) {
     throw new VaultError('SAME_USER', 'You are already signed in as this person.', 409);
   }
   if (target.system_role === 'IT_SUPER_ADMIN') {
@@ -47,7 +58,7 @@ async function actAsUser(db, actor, targetUserId) {
   await recordAudit(db, {
     tenantId: actor.tenantId,
     eventType: 'ACT_AS',
-    actorUserIds: [actor.userId],
+    actorUserIds: [admin.userId],
     detail: {
       target_user_id: Number(target.user_id),
       target_email: target.work_email,
@@ -55,7 +66,7 @@ async function actAsUser(db, actor, targetUserId) {
     },
   });
   return {
-    token: signSession(target, { actorUserId: actor.userId }),
+    token: signSession(target, { actorUserId: admin.userId }),
     user: {
       user_id: target.user_id,
       full_legal_name: target.full_legal_name,

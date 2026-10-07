@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test --test-concurrency=1 test/*.test.js"
+    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "build:css": "tailwindcss -i public/tailwind.src.css -o public/tailwind.css --minify"
   },
   "engines": {
     "node": ">=20"
@@ -18,5 +19,9 @@
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^6.10.0",
     "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "tailwindcss": "^4.3.3"
   }
 }

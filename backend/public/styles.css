@@ -17,7 +17,10 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; min-height: 100vh; }
+body:not(.is-gate) { background: #f3f4f6; color: #1f2937; }
+body:has(#acting-banner:not([hidden])) .mast { display: none; }
 body.is-gate {
   display: flex;
   flex-direction: column;
@@ -75,7 +78,7 @@ p { margin: 0; }
 main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
 
 .desk-bar { display: flex; gap: 1.5rem; align-items: flex-end; flex-wrap: wrap; }
-.book-date { color: #f7fbfb; font-size: 0.82rem; margin: 0; }
+.book-date { color: #1f2937; font-size: 0.82rem; margin: 0; }
 .book-date select { width: auto; min-width: 14rem; background: white; color: var(--ink); }
 .login-screen {
   width: min(100%, 70rem);
@@ -327,31 +330,7 @@ main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
   color: #b7d4d4;
 }
 #entra-fold[hidden] { display: none; }
-.entra-admin {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  background: white;
-  border: 1px solid var(--line);
-  padding: 0.85rem 1rem;
-  margin-bottom: 0.8rem;
-}
-.entra-admin h3 { font-size: 1.05rem; }
-.entra-admin p { color: var(--ink-soft); margin-top: 0.25rem; max-width: 40rem; }
-.entra-admin button {
-  flex: none;
-  min-width: 4.5rem;
-  margin: 0;
-  border: 1px solid var(--mast);
-  background: var(--mast);
-  color: white;
-  padding: 0.45rem 0.9rem;
-}
-.entra-admin button[aria-pressed="false"] {
-  background: white;
-  color: var(--ink);
-}
+#entra-toggle:disabled { opacity: 0.6; }
 #password-form[hidden],
 #login-view[hidden] { display: none; }
 .card, dialog {
@@ -382,7 +361,7 @@ button[type="submit"], #open-close {
 }
 .hint, .status, .formula { color: var(--ink-soft); margin: 0.35rem 0; }
 body:not(.is-gate) .status,
-body:not(.is-gate) .formula { color: #f7fbfb; }
+body:not(.is-gate) .formula { color: #3d5568; }
 .error { color: var(--seal); min-height: 1.2rem; margin-top: 0.6rem; }
 .book-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .book-tabs button {
@@ -577,67 +556,31 @@ tr[data-label="Bal c/d"] td {
   letter-spacing: 0.12em;
   font-size: 0.72rem;
 }
-.calendar {
-  background: white;
-  border: 1px solid var(--line);
-  padding: 0.85rem 1rem 1rem;
-  margin-bottom: 0.8rem;
-}
-.calendar h3 { font-size: 1.15rem; }
-.calendar .hint { color: var(--ink-soft); margin: 0.35rem 0 0.7rem; }
-.calendar-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.35rem 1rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.calendar-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0.25rem 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 0.92rem;
-}
-.calendar-list time { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.82rem; }
-.calendar-forms {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.8rem;
-  margin-top: 0.9rem;
-}
-.calendar-forms form { border-top: 1px solid var(--line); padding-top: 0.6rem; }
 .branch-picks { display: flex; flex-wrap: wrap; gap: 0.4rem 0.8rem; margin-top: 0.4rem; }
 .branch-picks label { margin-top: 0; font-size: 0.85rem; }
-.calendar button.cancel {
+#calendar-panel button.cancel {
   background: transparent;
   border: 1px solid var(--line);
   padding: 0.15rem 0.4rem;
 }
-.rotation {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.7rem;
-  margin-bottom: 0.8rem;
+#calendar-panel ul { margin: 0; padding: 0; list-style: none; }
+#handover-error:empty,
+#act-as-error:empty { display: none; margin: 0; padding: 0; border: 0; min-height: 0; }
+#handover-error:not(:empty)::before {
+  content: "!";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-top: 0.1rem;
+  border-radius: 999px;
+  background: #b91c1c;
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 700;
+  flex: none;
 }
-.rotation article, .handover {
-  background: white;
-  border: 1px solid var(--line);
-  padding: 0.75rem 0.85rem;
-}
-.handover { margin-bottom: 0.8rem; }
-.handover-post {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.6rem;
-  margin-top: 0.8rem;
-  padding-top: 0.7rem;
-  border-top: 1px solid var(--line);
-}
-.rotation h3, .handover h3 { font-size: 1.05rem; }
-.rotation p, .handover p { color: var(--ink-soft); margin-top: 0.2rem; }
 .signoff {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -655,23 +598,7 @@ dialog { width: min(100% - 2rem, 40rem); }
 dialog::backdrop { background: rgba(16, 40, 51, 0.45); }
 .pin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
-footer { padding: 1.5rem 1.25rem 2rem; color: rgba(247, 251, 251, 0.82); font-size: 0.82rem; }
-.act-as {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.75rem 1rem;
-  background: white;
-  border: 1px solid var(--line);
-  padding: 0.85rem 1rem;
-  margin-bottom: 0.8rem;
-}
-.act-as h3 { font-size: 1.05rem; }
-.act-as p { color: var(--ink-soft); margin-top: 0.25rem; flex: 1 1 16rem; }
-.act-as select { width: min(100%, 24rem); margin: 0; }
-.act-as button { margin: 0; }
-.acting-banner { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
-.acting-banner button { margin: 0; background: var(--mast); color: white; border: 1px solid var(--mast); padding: 0.4rem 0.75rem; }
+footer { padding: 1.5rem 1.25rem 2rem; color: #4b5563; font-size: 0.82rem; }
 .entry-panel {
   background: white;
   color: var(--ink);

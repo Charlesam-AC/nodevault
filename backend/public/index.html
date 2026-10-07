@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/tailwind.css">
 </head>
 <body class="is-gate">
   <header class="mast">
@@ -24,6 +25,14 @@
       <button type="button" id="sign-out" hidden>Sign out</button>
     </div>
   </header>
+  <div id="acting-banner" hidden class="bg-[#0e4c56] text-white">
+    <div class="mx-auto flex max-w-[1440px] items-center px-5">
+      <button type="button" id="acting-return" class="inline-flex items-center gap-2 border-0 bg-transparent px-0 py-2.5 text-sm font-medium text-white">
+        <span aria-hidden="true">←</span>
+        Return to Admin
+      </button>
+    </div>
+  </div>
 
   <main>
     <section id="login-view" class="login-screen">
@@ -100,32 +109,33 @@
     </section>
 
     <section id="desk-view" hidden>
-      <div id="acting-banner" class="banner acting-banner" hidden>
-        <p id="acting-copy"></p>
-        <button type="button" id="acting-return">Return to admin</button>
-      </div>
       <div id="maintenance-banner" class="banner" hidden></div>
-      <section id="act-as" class="act-as" hidden>
-        <div>
-          <h3>Test as a staff member</h3>
-          <p>Open the desk with that person's role. A vault custodian or the weekly head teller writes lines on the open book.</p>
+      <section id="act-as" hidden class="mb-3 rounded border border-[#d5e6ea] bg-[#e7f5f7] px-4 py-3">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <p class="flex items-start gap-2 text-sm leading-5 text-[#1d4e58]">
+            <svg id="acting-icon" hidden viewBox="0 0 20 20" class="mt-0.5 h-4 w-4 shrink-0 fill-[#1d6f86]" aria-hidden="true"><path d="M10 1.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Zm.75 12.25h-1.5v-5h1.5v5Zm0-6.5h-1.5V5.75h1.5V7.25Z"/></svg>
+            <span id="acting-copy"></span>
+          </p>
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <select id="act-as-user" class="mt-0 h-9 w-full rounded border border-gray-300 bg-white px-2 text-sm text-gray-800 sm:w-80"></select>
+            <button type="button" id="act-as-open" class="h-9 shrink-0 rounded bg-[#102833] px-3 text-sm font-medium text-white">Test as this person</button>
+            <button type="button" id="acting-exit" hidden class="h-9 shrink-0 rounded border border-gray-300 bg-white px-3 text-sm text-gray-800">Exit Simulation</button>
+          </div>
         </div>
-        <label>Staff member
-          <select id="act-as-user"></select>
-        </label>
-        <button type="button" id="act-as-open">Open as this person</button>
-        <p id="act-as-error" class="error" role="alert"></p>
+        <p id="act-as-error" class="error text-sm text-red-700" role="alert"></p>
       </section>
-      <section id="entra-admin" class="entra-admin" hidden>
+      <section id="entra-admin" hidden class="mb-3 flex flex-col gap-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3>Microsoft Entra</h3>
-          <p id="entra-admin-copy"></p>
+          <h3 class="text-base font-semibold text-gray-900">Microsoft Entra</h3>
+          <p id="entra-admin-copy" class="mt-1 max-w-3xl text-sm text-gray-600"></p>
         </div>
-        <button type="button" id="entra-toggle" aria-pressed="true">On</button>
+        <button type="button" id="entra-toggle" role="switch" aria-pressed="true" class="relative h-6 w-11 shrink-0 rounded-full border-0 bg-slate-800 p-0">
+          <span class="pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 translate-x-5 rounded-full bg-white shadow transition-transform"></span>
+        </button>
       </section>
-      <section id="calendar-panel" class="calendar" aria-label="Non-working days"></section>
-      <section id="rotation-panel" class="rotation" aria-label="Post rotation"></section>
-      <section id="handover-panel" class="handover" hidden></section>
+      <section id="calendar-panel" class="mb-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm" aria-label="Non-working days"></section>
+      <section id="rotation-panel" class="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3" aria-label="Post rotation"></section>
+      <section id="handover-panel" hidden class="mb-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm"></section>
       <p id="carry-flags" class="error"></p>
       <div id="ledger-panel">
       <div class="desk-bar">
