@@ -542,6 +542,24 @@ body:not(.is-gate) footer {
   background: var(--ledger-paper);
   border-bottom: 2px solid var(--ledger-rule-group);
 }
+#sheet-head-pin {
+  position: fixed;
+  z-index: 35;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--ledger-paper);
+  border-bottom: 2px solid var(--ledger-rule-group);
+}
+#sheet-head-pin .pin-columns { overflow: hidden; }
+#sheet-head-pin .sheet-title { width: 100%; }
+#sheet-head-pin .sheet-title,
+#sheet-head-pin .ledger-table thead th {
+  position: static;
+}
+.sheet-title.is-covered,
+#ledger thead.is-covered {
+  visibility: hidden;
+}
 .ledger-table {
   border-collapse: separate;
   border-spacing: 0;
@@ -778,6 +796,7 @@ footer { padding: 1.5rem 1.25rem 2rem; color: #ffffff; font-size: 0.82rem; }
     padding: 0.4rem;
   }
   .ledger-scroll { overflow: visible; }
+  #sheet-head-pin { display: none !important; }
   .sheet, .ledger-table th, .ledger-table td, .sheet-title, .gutter {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;

@@ -132,6 +132,7 @@ function renderSpread(view) {
   if (typeof synchronizeHorizontalMatrixLayout === 'function') {
     synchronizeHorizontalMatrixLayout();
   }
+  syncSheetHead();
 }
 
 function renderPosition(view) {
@@ -1229,11 +1230,56 @@ function syncFullscreenButton() {
   fullscreenButton.setAttribute('aria-pressed', on ? 'true' : 'false');
 }
 
+function syncSheetHead() {
+  const pin = document.getElementById('sheet-head-pin');
+  const scroller = document.querySelector('.ledger-scroll');
+  const title = document.getElementById('sheet-title');
+  const thead = document.querySelector('#ledger thead');
+  const bar = document.getElementById('sheet-suspend');
+  if (!pin || !scroller || !title || !thead || !bar) return;
+  const barBox = bar.getBoundingClientRect();
+  const titleBox = title.getBoundingClientRect();
+  const theadBox = thead.getBoundingClientRect();
+  const scrollerBox = scroller.getBoundingClientRect();
+  const headerHeight = theadBox.bottom - titleBox.top;
+  const stuck = titleBox.top <= barBox.bottom + 0.5 && scrollerBox.bottom > barBox.bottom + headerHeight;
+  pin.hidden = !stuck;
+  title.classList.toggle('is-covered', stuck);
+  thead.classList.toggle('is-covered', stuck);
+  if (!stuck) return;
+  pin.style.top = `${barBox.bottom}px`;
+  pin.style.left = `${scrollerBox.left}px`;
+  pin.style.width = `${scroller.clientWidth}px`;
+  pin.querySelector('.sheet-title').textContent = title.textContent;
+  const theadCopy = pin.querySelector('thead');
+  const stamp = `${title.textContent}|${thead.innerHTML.length}|${Math.round(theadBox.width)}`;
+  if (pin.dataset.stamp !== stamp) {
+    theadCopy.replaceChildren(...[...thead.children].map((row) => row.cloneNode(true)));
+    pin.dataset.stamp = stamp;
+  }
+  const copyCells = [...theadCopy.querySelectorAll('th')];
+  [...thead.querySelectorAll('th')].forEach((cell, index) => {
+    const copy = copyCells[index];
+    if (!copy) return;
+    const width = cell.getBoundingClientRect().width;
+    copy.style.boxSizing = 'border-box';
+    copy.style.width = `${width}px`;
+    copy.style.minWidth = `${width}px`;
+    copy.style.maxWidth = `${width}px`;
+  });
+  const table = pin.querySelector('table');
+  const sourceTable = document.getElementById('ledger');
+  const sourceBox = sourceTable.getBoundingClientRect();
+  const borderInset = sourceBox.left - scrollerBox.left + scroller.scrollLeft;
+  table.style.width = `${sourceBox.width}px`;
+  table.style.transform = `translateX(${borderInset - scroller.scrollLeft}px)`;
+}
+
 function syncSuspendedSheet() {
   const bar = document.getElementById('sheet-suspend');
   if (!bar) return;
-  const top = bar.getBoundingClientRect().top;
-  bar.classList.toggle('is-stuck', top <= 1);
+  bar.classList.toggle('is-stuck', bar.getBoundingClientRect().top <= 1);
+  syncSheetHead();
 }
 
 expandButton.addEventListener('click', () => {
@@ -1263,6 +1309,7 @@ document.addEventListener('keydown', (event) => {
 });
 window.addEventListener('scroll', syncSuspendedSheet, { passive: true });
 ledgerPanel.addEventListener('scroll', syncSuspendedSheet, { passive: true });
+document.querySelector('.ledger-scroll').addEventListener('scroll', syncSheetHead, { passive: true });
 window.addEventListener('resize', syncSuspendedSheet);
 
 function applyPublicConfig(config) {
