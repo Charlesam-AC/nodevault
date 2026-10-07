@@ -411,6 +411,10 @@ function buildApp(db) {
     }));
   }
 
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'NOT_FOUND', message: 'That desk request does not exist.' });
+  });
+
   app.use(express.static(path.join(__dirname, 'public')));
   app.get('/', (_req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));

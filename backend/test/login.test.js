@@ -313,10 +313,29 @@ test('the master admin can open the desk as a staff member and return', async ()
   assert.equal(books.status, 200);
   assert.ok(books.body.books.some((book) => book.book_class === 'KWACHA_TREASURY'));
 
+  const switched = await request(applicationPool, {
+    method: 'POST',
+    path: '/api/auth/act-as',
+    token: acting.body.token,
+    body: { user_id: desk.users.coord.user_id },
+  });
+  assert.equal(switched.status, 200);
+  assert.equal(switched.body.user.system_role, 'HEAD_TELLER_COORDINATOR');
+  const asCoordinator = await request(applicationPool, { path: '/api/me', token: switched.body.token });
+  assert.equal(asCoordinator.status, 200);
+  assert.equal(asCoordinator.body.acting_as, true);
+  assert.equal(asCoordinator.body.system_role, 'HEAD_TELLER_COORDINATOR');
+  const switchedBooks = await request(applicationPool, { path: '/api/books', token: switched.body.token });
+  assert.equal(switchedBooks.status, 200);
+
+  const missing = await request(applicationPool, { path: '/api/does-not-exist' });
+  assert.equal(missing.status, 404);
+  assert.equal(missing.body.error, 'NOT_FOUND');
+
   const back = await request(applicationPool, {
     method: 'POST',
     path: '/api/auth/act-as/return',
-    token: acting.body.token,
+    token: switched.body.token,
     body: {},
   });
   assert.equal(back.status, 200);

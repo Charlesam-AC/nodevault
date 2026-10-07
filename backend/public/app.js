@@ -19,7 +19,14 @@ async function api(path, options = {}) {
   if (state.token) headers.Authorization = `Bearer ${state.token}`;
   const response = await fetch(path, { ...options, headers });
   const text = await response.text();
-  const body = text ? JSON.parse(text) : null;
+  let body = null;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch (_error) {
+      throw new Error('The desk sent a page instead of data. Reload the desk and try again.');
+    }
+  }
   if (!response.ok) {
     const error = new Error(body?.message || 'Request failed');
     error.status = response.status;
@@ -927,7 +934,12 @@ async function enterDesk(date) {
   } else {
     banner.hidden = true;
   }
-  await renderEntraAdmin();
+  try {
+    await renderEntraAdmin();
+  } catch (_error) {
+    const entra = document.getElementById('entra-admin');
+    if (entra) entra.hidden = true;
+  }
   renderActAs();
   renderCalendar(desk.calendar || {});
   renderRotation(desk.rotation || { posts: [] });
