@@ -5,6 +5,7 @@ const state = {
   books: [],
   book: null,
   directory: [],
+  staff: null,
   businessDate: '',
   dates: [],
   amendingLine: null,
@@ -717,6 +718,239 @@ function renderActAs() {
   fillActAsSelect();
 }
 
+function addIsoDays(iso, days) {
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function fillSelect(select, options, selected) {
+  const current = selected || select.value;
+  select.replaceChildren();
+  for (const option of options) {
+    const node = document.createElement('option');
+    node.value = option.value;
+    node.textContent = option.label;
+    select.appendChild(node);
+  }
+  if (current && [...select.options].some((option) => option.value === current)) select.value = current;
+}
+
+function staffRoleLabel(code) {
+  const found = (state.staff?.roles || []).find((role) => role.code === code);
+  return found ? found.label : code;
+}
+
+function staffBranchOptions() {
+  return (state.staff?.branches || []).map((branch) => ({
+    value: String(branch.branch_id),
+    label: `${branch.branch_name} (${branch.branch_code})`,
+  }));
+}
+
+function fillStaffChoices() {
+  const roles = (state.staff?.roles || []).map((role) => ({ value: role.code, label: role.label }));
+  const branches = staffBranchOptions();
+  fillSelect(document.getElementById('staff-role'), roles);
+  fillSelect(document.getElementById('staff-branch'), branches);
+  fillSelect(document.getElementById('staff-edit-role'), roles);
+  fillSelect(document.getElementById('staff-edit-branch'), branches);
+  fillSelect(document.getElementById('staff-assign-branch'), branches);
+}
+
+function coverageText(item) {
+  if (item.coverage === 'current') return 'Holds now';
+  if (item.coverage === 'upcoming') return 'Upcoming';
+  return 'Recent';
+}
+
+function renderStaffList() {
+  const host = document.getElementById('staff-list');
+  host.replaceChildren();
+  const register = state.staff;
+  if (!register || !register.users.length) {
+    const empty = document.createElement('p');
+    empty.className = 'staff-meta';
+    empty.textContent = 'No one is on the staff register yet.';
+    host.appendChild(empty);
+    return;
+  }
+  for (const user of register.users) {
+    const card = document.createElement('article');
+    card.className = `staff-card${user.is_active ? '' : ' is-removed'}`;
+    card.dataset.userId = String(user.user_id);
+    const title = document.createElement('h4');
+    title.textContent = user.full_legal_name;
+    const identity = document.createElement('p');
+    identity.className = 'staff-meta';
+    identity.textContent = `${user.employee_id} · ${user.two_letter_initials} · ${user.work_email}`;
+    const place = document.createElement('p');
+    place.className = 'staff-meta';
+    const branch = user.branch_name ? `${user.branch_name}` : 'No branch';
+    place.textContent = user.is_active
+      ? `${staffRoleLabel(user.system_role)} · ${branch}`
+      : `${staffRoleLabel(user.system_role)} · ${branch} · Removed from the desk`;
+    const posts = document.createElement('ul');
+    posts.className = 'staff-posts';
+    if (!user.assignments.length) {
+      const item = document.createElement('li');
+      item.textContent = 'No vault post in the last two weeks.';
+      posts.appendChild(item);
+    } else {
+      for (const assignment of user.assignments) {
+        const item = document.createElement('li');
+        item.textContent = `${coverageText(assignment)} · ${assignment.label} · ${assignment.branch_name} · ${assignment.period_start} to ${assignment.period_end}`;
+        posts.appendChild(item);
+      }
+    }
+    card.append(title, identity, place, posts);
+    if (register.can_manage && !user.protected) {
+      const actions = document.createElement('div');
+      actions.className = 'staff-actions';
+      if (user.is_active) {
+        const matching = (register.posts || []).filter((post) => post.role === user.system_role);
+        if (matching.length) {
+          const assign = document.createElement('button');
+          assign.type = 'button';
+          assign.textContent = 'Assign post';
+          assign.addEventListener('click', () => openStaffAssign(user));
+          actions.appendChild(assign);
+        }
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'staff-quiet';
+        edit.textContent = 'Change role or branch';
+        edit.addEventListener('click', () => openStaffEdit(user));
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'staff-quiet';
+        remove.textContent = 'Remove from desk';
+        remove.addEventListener('click', () => removeStaffMember(user));
+        actions.append(edit, remove);
+      } else {
+        const restore = document.createElement('button');
+        restore.type = 'button';
+        restore.textContent = 'Restore to the desk';
+        restore.addEventListener('click', () => restoreStaffMember(user));
+        actions.appendChild(restore);
+      }
+      card.appendChild(actions);
+    } else if (user.protected) {
+      const fixed = document.createElement('p');
+      fixed.className = 'staff-meta';
+      fixed.textContent = 'This account stays on the register.';
+      card.appendChild(fixed);
+    }
+    host.appendChild(card);
+  }
+}
+
+function hideStaffEditors() {
+  document.getElementById('staff-edit').hidden = true;
+  document.getElementById('staff-assign').hidden = true;
+  document.getElementById('staff-edit-error').textContent = '';
+  document.getElementById('staff-assign-error').textContent = '';
+}
+
+function openStaffEdit(user) {
+  hideStaffEditors();
+  document.getElementById('staff-note').textContent = '';
+  const form = document.getElementById('staff-edit');
+  form.hidden = false;
+  document.getElementById('staff-edit-user').value = String(user.user_id);
+  document.getElementById('staff-edit-title').textContent = `Change role or branch for ${user.full_legal_name}`;
+  document.getElementById('staff-edit-role').value = user.system_role;
+  if (user.branch_id) document.getElementById('staff-edit-branch').value = String(user.branch_id);
+  document.getElementById('staff-edit-pin').value = '';
+  form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function openStaffAssign(user) {
+  hideStaffEditors();
+  document.getElementById('staff-note').textContent = '';
+  const posts = (state.staff?.posts || [])
+    .filter((post) => post.role === user.system_role)
+    .map((post) => ({ value: post.code, label: post.label }));
+  fillSelect(document.getElementById('staff-assign-post'), posts);
+  const form = document.getElementById('staff-assign');
+  form.hidden = false;
+  document.getElementById('staff-assign-user').value = String(user.user_id);
+  document.getElementById('staff-assign-title').textContent = `Assign a vault post to ${user.full_legal_name}`;
+  if (user.branch_id) document.getElementById('staff-assign-branch').value = String(user.branch_id);
+  const today = state.staff?.today;
+  if (today) {
+    document.getElementById('staff-assign-start').value = today;
+    document.getElementById('staff-assign-end').value = addIsoDays(today, 13);
+  }
+  form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function renderStaff() {
+  const panel = document.getElementById('staff-panel');
+  if (!panel) return;
+  const show = state.me?.system_role === 'AUDITOR' || state.me?.can_act_as;
+  if (!show) {
+    panel.hidden = true;
+    state.staff = null;
+    return;
+  }
+  panel.hidden = false;
+  const error = document.getElementById('staff-error');
+  error.textContent = '';
+  let register;
+  try {
+    register = await api('/api/staff');
+  } catch (err) {
+    error.textContent = err.message;
+    document.getElementById('staff-list').replaceChildren();
+    document.getElementById('staff-add').hidden = true;
+    hideStaffEditors();
+    return;
+  }
+  state.staff = register;
+  document.getElementById('staff-copy').textContent = register.can_manage
+    ? 'Add a person, assign their branch and role, put them on a vault post, or remove them from the desk.'
+    : 'Who holds each branch, role, and vault post. The master admin makes the changes.';
+  document.getElementById('staff-add').hidden = !register.can_manage;
+  hideStaffEditors();
+  fillStaffChoices();
+  renderStaffList();
+}
+
+async function removeStaffMember(user) {
+  const error = document.getElementById('staff-error');
+  const note = document.getElementById('staff-note');
+  error.textContent = '';
+  note.textContent = '';
+  try {
+    await api(`/api/staff/${user.user_id}`, { method: 'DELETE' });
+    note.textContent = `${user.full_legal_name} is removed from the desk.`;
+    await enterDesk(state.businessDate || undefined);
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
+async function restoreStaffMember(user) {
+  const error = document.getElementById('staff-error');
+  const note = document.getElementById('staff-note');
+  error.textContent = '';
+  note.textContent = '';
+  try {
+    await api(`/api/staff/${user.user_id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active: true }),
+    });
+    note.textContent = `${user.full_legal_name} is back on the desk.`;
+    await enterDesk(state.businessDate || undefined);
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
 function canPostEntries() {
   const role = state.me?.system_role;
   if (role === 'VAULT_CUSTODIAN' || role === 'HEAD_TELLER_COORDINATOR') return true;
@@ -941,6 +1175,12 @@ async function enterDesk(date) {
     if (entra) entra.hidden = true;
   }
   renderActAs();
+  try {
+    await renderStaff();
+  } catch (_error) {
+    const staff = document.getElementById('staff-panel');
+    if (staff) staff.hidden = true;
+  }
   renderCalendar(desk.calendar || {});
   renderRotation(desk.rotation || { posts: [] });
   renderFlags(desk.carryFlags);
@@ -1413,6 +1653,105 @@ document.getElementById('entra-toggle').addEventListener('click', async () => {
   } finally {
     button.disabled = false;
   }
+});
+
+document.getElementById('staff-add').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const error = document.getElementById('staff-add-error');
+  const note = document.getElementById('staff-note');
+  const button = document.getElementById('staff-add-submit');
+  error.textContent = '';
+  note.textContent = '';
+  button.disabled = true;
+  const pin = document.getElementById('staff-pin').value.trim();
+  try {
+    const created = await api('/api/staff', {
+      method: 'POST',
+      body: JSON.stringify({
+        full_legal_name: document.getElementById('staff-name').value,
+        work_email: document.getElementById('staff-email').value,
+        employee_id: document.getElementById('staff-employee').value,
+        two_letter_initials: document.getElementById('staff-initials').value,
+        system_role: document.getElementById('staff-role').value,
+        branch_id: Number(document.getElementById('staff-branch').value),
+        password: document.getElementById('staff-password').value,
+        closing_pin: pin,
+      }),
+    });
+    document.getElementById('staff-add').reset();
+    note.textContent = `${created.full_legal_name} is on the register.`;
+    await enterDesk(state.businessDate || undefined);
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.getElementById('staff-edit').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const error = document.getElementById('staff-edit-error');
+  const note = document.getElementById('staff-note');
+  const button = document.getElementById('staff-edit-submit');
+  error.textContent = '';
+  note.textContent = '';
+  button.disabled = true;
+  const pin = document.getElementById('staff-edit-pin').value.trim();
+  const body = {
+    system_role: document.getElementById('staff-edit-role').value,
+    branch_id: Number(document.getElementById('staff-edit-branch').value),
+  };
+  if (pin) body.closing_pin = pin;
+  try {
+    const saved = await api(`/api/staff/${document.getElementById('staff-edit-user').value}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+    note.textContent = `${saved.full_legal_name} is updated.`;
+    await enterDesk(state.businessDate || undefined);
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.getElementById('staff-edit-cancel').addEventListener('click', () => {
+  document.getElementById('staff-edit').hidden = true;
+  document.getElementById('staff-edit-error').textContent = '';
+});
+
+document.getElementById('staff-assign').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const error = document.getElementById('staff-assign-error');
+  const note = document.getElementById('staff-note');
+  const button = document.getElementById('staff-assign-submit');
+  error.textContent = '';
+  note.textContent = '';
+  button.disabled = true;
+  try {
+    await api('/api/staff/assignments', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: Number(document.getElementById('staff-assign-user').value),
+        post_code: document.getElementById('staff-assign-post').value,
+        branch_id: Number(document.getElementById('staff-assign-branch').value),
+        period_start: document.getElementById('staff-assign-start').value,
+        period_end: document.getElementById('staff-assign-end').value,
+      }),
+    });
+    note.textContent = 'The vault post is assigned.';
+    await enterDesk(state.businessDate || undefined);
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.getElementById('staff-assign-cancel').addEventListener('click', () => {
+  document.getElementById('staff-assign').hidden = true;
+  document.getElementById('staff-assign-error').textContent = '';
 });
 
 async function boot() {

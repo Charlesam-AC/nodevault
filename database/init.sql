@@ -695,6 +695,11 @@ GRANT SELECT, INSERT ON bank_tenants, branches, nodevault_users, system_control,
   mock_core_positions TO nodevault_app;
 
 GRANT UPDATE (failed_login_count, locked_until) ON nodevault_users TO nodevault_app;
+GRANT UPDATE (
+  full_legal_name, branch_id, system_role, employee_id, two_letter_initials,
+  password_hash, closing_pin_hash, is_active
+) ON nodevault_users TO nodevault_app;
+GRANT UPDATE (period_end) ON post_assignments TO nodevault_app;
 GRANT UPDATE (status, closed_at) ON branch_vault_books TO nodevault_app;
 GRANT UPDATE (initialized_at, it_admin_frozen, entra_enabled) ON system_control TO nodevault_app;
 GRANT UPDATE (status, attempts, last_error, updated_at) ON dispatch_outbox TO nodevault_app;

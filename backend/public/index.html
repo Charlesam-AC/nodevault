@@ -133,6 +133,84 @@
           <span class="pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 translate-x-5 rounded-full bg-white shadow transition-transform"></span>
         </button>
       </section>
+      <section id="staff-panel" hidden class="mb-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm" aria-label="Staff register">
+        <h3 class="text-base font-semibold text-gray-900">Staff register</h3>
+        <p id="staff-copy" class="mt-1 text-sm text-gray-600"></p>
+        <p id="staff-note" class="staff-note" role="status"></p>
+        <p id="staff-error" class="error" role="alert"></p>
+        <div id="staff-list"></div>
+        <form id="staff-add" hidden>
+          <h4 class="staff-span">Add a person</h4>
+          <label>Full name
+            <input id="staff-name" name="full_legal_name" maxlength="120" required autocomplete="off">
+          </label>
+          <label>Work email
+            <input id="staff-email" name="work_email" type="email" maxlength="160" required autocomplete="off">
+          </label>
+          <label>Employee ID
+            <input id="staff-employee" name="employee_id" maxlength="32" required autocomplete="off">
+          </label>
+          <label>Initials
+            <input id="staff-initials" name="two_letter_initials" maxlength="8" required autocomplete="off">
+          </label>
+          <label>Role
+            <select id="staff-role" name="system_role" required></select>
+          </label>
+          <label>Branch
+            <select id="staff-branch" name="branch_id" required></select>
+          </label>
+          <label>Directory password
+            <input id="staff-password" name="password" type="password" minlength="10" maxlength="72" required autocomplete="new-password">
+          </label>
+          <label>Closing PIN
+            <input id="staff-pin" name="closing_pin" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="Required for custodians">
+          </label>
+          <p class="staff-span hint">The closing PIN is 4 to 8 digits, and it must differ from the directory password. A vault custodian or head teller needs one.</p>
+          <p id="staff-add-error" class="error staff-span" role="alert"></p>
+          <div class="staff-span">
+            <button type="submit" id="staff-add-submit">Add to the register</button>
+          </div>
+        </form>
+        <form id="staff-edit" hidden>
+          <h4 class="staff-span" id="staff-edit-title">Change role or branch</h4>
+          <input id="staff-edit-user" type="hidden">
+          <label>Role
+            <select id="staff-edit-role" required></select>
+          </label>
+          <label>Branch
+            <select id="staff-edit-branch" required></select>
+          </label>
+          <label class="staff-span">Closing PIN, if this role needs one
+            <input id="staff-edit-pin" inputmode="numeric" maxlength="8" autocomplete="off">
+          </label>
+          <p id="staff-edit-error" class="error staff-span" role="alert"></p>
+          <div class="staff-actions staff-span">
+            <button type="submit" id="staff-edit-submit">Save role and branch</button>
+            <button type="button" id="staff-edit-cancel" class="staff-quiet">Cancel</button>
+          </div>
+        </form>
+        <form id="staff-assign" hidden>
+          <h4 class="staff-span" id="staff-assign-title">Assign a vault post</h4>
+          <input id="staff-assign-user" type="hidden">
+          <label>Post
+            <select id="staff-assign-post" required></select>
+          </label>
+          <label>Branch
+            <select id="staff-assign-branch" required></select>
+          </label>
+          <label>Start
+            <input id="staff-assign-start" type="date" required>
+          </label>
+          <label>End
+            <input id="staff-assign-end" type="date" required>
+          </label>
+          <p id="staff-assign-error" class="error staff-span" role="alert"></p>
+          <div class="staff-actions staff-span">
+            <button type="submit" id="staff-assign-submit">Assign this post</button>
+            <button type="button" id="staff-assign-cancel" class="staff-quiet">Cancel</button>
+          </div>
+        </form>
+      </section>
       <section id="calendar-panel" class="mb-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm" aria-label="Non-working days"></section>
       <section id="rotation-panel" class="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3" aria-label="Post rotation"></section>
       <section id="handover-panel" hidden class="mb-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm"></section>

@@ -25,6 +25,7 @@ body:not(.is-gate) select,
 body:not(.is-gate) textarea { color: #1f2937; background: #fff; }
 #act-as,
 #entra-admin,
+#staff-panel,
 #calendar-panel,
 #rotation-panel article,
 #handover-panel,
@@ -757,6 +758,67 @@ footer { padding: 1.5rem 1.25rem 2rem; color: #ffffff; font-size: 0.82rem; }
   border: 1px solid var(--mast);
   padding: 0.65rem 0.9rem;
 }
+#staff-panel h3,
+#staff-panel h4 { color: #102833; margin: 0; }
+#staff-panel h4 { font-family: "Public Sans", "Segoe UI", sans-serif; font-size: 0.95rem; font-weight: 650; }
+#staff-copy { color: #3d5568; }
+#staff-note:empty,
+#staff-error:empty,
+#staff-add-error:empty,
+#staff-edit-error:empty,
+#staff-assign-error:empty { display: none; margin: 0; padding: 0; min-height: 0; }
+.staff-note { color: #1d6b4f; margin-top: 0.45rem; }
+.staff-list { display: grid; gap: 0.6rem; margin-top: 0.75rem; }
+.staff-card {
+  border: 1px solid #d5e3ea;
+  border-radius: 8px;
+  padding: 0.75rem 0.85rem;
+  background: #f7fbfc;
+}
+.staff-card.is-removed { background: #f4f7f8; }
+.staff-card h4 { font-size: 0.98rem; }
+.staff-meta { margin-top: 0.2rem; color: #3d5568; font-size: 0.86rem; }
+.staff-posts { margin: 0.35rem 0 0; padding: 0; list-style: none; }
+.staff-posts li { margin-top: 0.15rem; font-size: 0.86rem; color: #102833; }
+.staff-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.55rem; }
+.staff-actions button,
+#staff-add button[type="submit"],
+#staff-edit button[type="submit"],
+#staff-assign button[type="submit"] {
+  margin-top: 0;
+  background: #102833;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.84rem;
+}
+#staff-panel button.staff-quiet {
+  background: #fff;
+  color: #102833;
+  border: 1px solid #b7c9d2;
+}
+#staff-add,
+#staff-edit,
+#staff-assign {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.15rem 0.8rem;
+  margin-top: 0.9rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #d5e3ea;
+}
+#staff-add[hidden],
+#staff-edit[hidden],
+#staff-assign[hidden] { display: none; }
+#staff-panel label { margin-top: 0.35rem; color: #102833; }
+#staff-panel .hint { color: #3d5568; }
+@media (min-width: 720px) {
+  #staff-add,
+  #staff-edit,
+  #staff-assign { grid-template-columns: 1fr 1fr; }
+  #staff-panel .staff-span { grid-column: 1 / -1; }
+}
 
 @media (min-width: 1800px) {
   main { max-width: min(2400px, calc(100% - 2.5rem)); }
@@ -768,6 +830,7 @@ footer { padding: 1.5rem 1.25rem 2rem; color: #ffffff; font-size: 0.82rem; }
   footer,
   #login-view,
   #calendar-panel,
+  #staff-panel,
   #rotation-panel,
   #handover-panel,
   #carry-flags,
@@ -854,6 +917,7 @@ body:not(.is-gate) :is(input, textarea)::placeholder {
 }
 #act-as,
 #entra-admin,
+#staff-panel,
 #calendar-panel,
 #rotation-panel article,
 #handover-panel,
@@ -884,8 +948,18 @@ body:not(.is-gate) button[type="submit"],
 #acting-exit,
 .book-tabs button,
 #entry-square,
-.mast-meta button {
+.mast-meta button,
+#staff-panel button.staff-quiet {
   -webkit-text-fill-color: currentColor;
+}
+#staff-panel button:not(.staff-quiet) {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+}
+#staff-panel button.staff-quiet {
+  color: #102833 !important;
+  -webkit-text-fill-color: #102833;
+  background: #ffffff;
 }
 #carry-flags:not(:empty) {
   color: #4a121c;

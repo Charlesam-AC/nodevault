@@ -25,6 +25,7 @@ const { executeThreePersonVaultLock, dispatchClosing } = require('./services/clo
 const { openBreakGlass } = require('./services/breakglass');
 const { readEntraEnabled, setEntraEnabled } = require('./services/entraToggle');
 const { actAsUser, returnToAdmin } = require('./services/actAs');
+const { listStaff, addStaff, updateStaff, removeStaff, assignPost } = require('./services/staff');
 const { toDecimalString } = require('./services/money');
 const {
   authenticateCorporateIdentity,
@@ -214,6 +215,26 @@ function buildApp(db) {
       [req.user.tenantId],
     );
     res.json({ users: rows.rows });
+  }));
+
+  app.get('/api/staff', guard, asyncRoute(async (req, res) => {
+    res.json(await listStaff(db, req.user));
+  }));
+
+  app.post('/api/staff', guard, asyncRoute(async (req, res) => {
+    res.status(201).json(await addStaff(db, req.user, req.body || {}));
+  }));
+
+  app.post('/api/staff/assignments', guard, asyncRoute(async (req, res) => {
+    res.status(201).json(await assignPost(db, req.user, req.body || {}));
+  }));
+
+  app.patch('/api/staff/:userId', guard, asyncRoute(async (req, res) => {
+    res.json(await updateStaff(db, req.user, req.params.userId, req.body || {}));
+  }));
+
+  app.delete('/api/staff/:userId', guard, asyncRoute(async (req, res) => {
+    res.json(await removeStaff(db, req.user, req.params.userId));
   }));
 
   app.get('/api/books', guard, asyncRoute(async (req, res) => {
