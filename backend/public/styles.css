@@ -1742,3 +1742,156 @@ body:not(.is-gate) #desk-view button[type="submit"]:active:not(:disabled),
   .signoff { display: grid; grid-template-columns: 1fr; }
 }
 .staff-actions .staff-meta { flex: 1 1 100%; margin: 0.15rem 0 0; }
+
+.fold-body {
+  background: #f3faf9;
+  padding: 1rem 1.05rem 1.15rem;
+}
+.fold-lead { margin: 0; }
+#staff-list.staff-list,
+.branch-list {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 0.85rem;
+}
+.fold-body .staff-card {
+  background: #ffffff;
+  border: 1px solid #d5e3ea;
+  border-top: 3px solid #108a7f;
+  border-radius: 16px;
+  box-shadow: 0 8px 22px rgba(4, 28, 34, 0.08);
+  padding: 0.85rem 0.95rem 0.85rem;
+}
+.fold-body .staff-card.is-removed {
+  border-top-color: #9bb0b8;
+  background: #f7fbfb;
+  box-shadow: none;
+}
+.fold-body .staff-card h4 {
+  font-family: "Public Sans", "Segoe UI", sans-serif;
+  font-size: 1.02rem;
+  font-weight: 680;
+  color: #102833;
+}
+.fold-body .staff-meta { color: #3d5568; }
+.fold-body .staff-posts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.5rem 0 0;
+}
+.fold-body .staff-posts li {
+  margin: 0;
+  padding: 0.28rem 0.6rem;
+  border-radius: 999px;
+  background: #e7f6f4;
+  color: #0d4f4a;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+#branch-add,
+#branch-edit,
+#staff-add,
+#staff-edit,
+#staff-assign,
+.day-form,
+.day-tools form {
+  background: #ffffff;
+  border: 1px solid #d5e3ea;
+  border-radius: 16px;
+  box-shadow: 0 8px 22px rgba(4, 28, 34, 0.06);
+  padding: 0.95rem 1rem 1rem;
+  margin-top: 0.85rem;
+}
+#staff-panel form h4,
+#branch-panel form h4,
+.day-form h4 {
+  font-family: "Public Sans", "Segoe UI", sans-serif;
+  font-size: 1.02rem;
+  font-weight: 680;
+  color: #102833;
+}
+#staff-panel form label,
+#branch-panel form label,
+.day-form label,
+.day-controls label {
+  margin: 0;
+  color: #0e6e86;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+body:not(.is-gate) #staff-panel :is(input, select),
+body:not(.is-gate) #branch-panel :is(input, select),
+body:not(.is-gate) #calendar-panel :is(input, select) {
+  margin-top: 0.28rem;
+  min-height: 2.55rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #c5d6de;
+  border-radius: 10px;
+  background-color: #f7fbfb;
+  color: #102833 !important;
+  -webkit-text-fill-color: #102833;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+body:not(.is-gate) #staff-panel :is(input, select):hover,
+body:not(.is-gate) #branch-panel :is(input, select):hover,
+body:not(.is-gate) #calendar-panel :is(input, select):hover {
+  border-color: #108a7f;
+  background-color: #ffffff;
+}
+body:not(.is-gate) #staff-panel :is(input, select):focus,
+body:not(.is-gate) #branch-panel :is(input, select):focus,
+body:not(.is-gate) #calendar-panel :is(input, select):focus {
+  outline: none;
+  border-color: #108a7f;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(16, 138, 127, 0.18);
+}
+#calendar-body .day-province label {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
+  font-size: 0.84rem;
+  color: #102833;
+}
+#staff-panel form .hint,
+#branch-panel form .hint {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 450;
+  font-size: 0.86rem;
+  color: #3d5568;
+}
+#staff-panel button.staff-quiet,
+#branch-panel button.staff-quiet,
+#calendar-panel button.cancel {
+  background: #d7f0ec !important;
+  color: #102833 !important;
+  -webkit-text-fill-color: #102833 !important;
+  border: 0 !important;
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+#staff-panel button.staff-quiet:hover,
+#branch-panel button.staff-quiet:hover,
+#calendar-panel button.cancel:hover {
+  background: #b7e4dc !important;
+  color: #102833 !important;
+  -webkit-text-fill-color: #102833 !important;
+}
+#staff-panel button:not(.staff-quiet):not(.fold-toggle),
+#branch-panel button:not(.staff-quiet):not(.fold-toggle),
+#calendar-panel .day-form button[type="submit"],
+#calendar-panel .day-tools button[type="submit"] {
+  border-radius: 10px;
+  font-weight: 650;
+}
+@media (min-width: 900px) {
+  #staff-list.staff-list,
+  .branch-list { grid-template-columns: 1fr 1fr; }
+}
