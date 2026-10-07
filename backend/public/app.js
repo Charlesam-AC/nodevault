@@ -611,6 +611,7 @@ async function enterDesk() {
   state.directory = (await api('/api/directory')).users;
   loginView.hidden = true;
   deskView.hidden = false;
+  document.body.classList.remove('is-gate');
   document.getElementById('sign-out').hidden = false;
   document.getElementById('bank-name').textContent = state.me.bank_name;
   document.getElementById('session-user').textContent = `${state.me.full_legal_name} · ${state.me.system_role}`;
@@ -639,19 +640,100 @@ async function enterDesk() {
     : 'No treasury book has been opened yet.';
 }
 
+const ROLE_LABEL = {
+  VAULT_CUSTODIAN: 'Vault custodian',
+  ATM_CUSTODIAN: 'ATM custodian',
+  HEAD_TELLER_COORDINATOR: 'Head teller',
+  TELLER: 'Branch teller',
+  AUDITOR: 'Auditor',
+  IT_SUPER_ADMIN: 'IT super admin',
+  REGIONAL_OPS_MANAGER: 'Regional operations',
+};
+
 function showLogin() {
   state.token = '';
   sessionStorage.removeItem('nodevault_token');
   loginView.hidden = false;
   deskView.hidden = true;
+  document.body.classList.add('is-gate');
   document.getElementById('sign-out').hidden = true;
 }
 
+function selectDemoUser(email) {
+  document.getElementById('password-email').value = email;
+  document.getElementById('email').value = email;
+  for (const button of document.querySelectorAll('#demo-directory button')) {
+    button.setAttribute('aria-pressed', button.dataset.email === email ? 'true' : 'false');
+  }
+  const passwordForm = document.getElementById('password-form');
+  const focus = passwordForm.hidden ? document.getElementById('assertion') : document.getElementById('password');
+  focus.focus();
+}
+
+function renderDemoDirectory(users) {
+  const panel = document.getElementById('demo-panel');
+  const list = document.getElementById('demo-directory');
+  list.replaceChildren();
+  if (!users.length) {
+    panel.hidden = true;
+    return;
+  }
+  for (const user of users) {
+    const item = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.email = user.work_email;
+    button.setAttribute('aria-pressed', 'false');
+    const identity = document.createElement('span');
+    const who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = user.full_legal_name;
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    meta.textContent = user.work_email;
+    identity.append(who, meta);
+    const role = document.createElement('span');
+    role.className = 'role';
+    const label = ROLE_LABEL[user.system_role] || user.system_role;
+    role.textContent = user.system_role === 'IT_SUPER_ADMIN' ? `${label} · Frozen` : label;
+    button.append(identity, role);
+    button.addEventListener('click', () => selectDemoUser(user.work_email));
+    item.appendChild(button);
+    list.appendChild(item);
+  }
+  panel.hidden = false;
+}
+
+async function submitSignIn(form, error, request) {
+  const button = form.querySelector('button[type="submit"]');
+  const label = button.textContent;
+  error.textContent = '';
+  button.disabled = true;
+  button.textContent = 'Signing in…';
+  try {
+    await request();
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+
+document.getElementById('toggle-password').addEventListener('click', () => {
+  const input = document.getElementById('password');
+  const button = document.getElementById('toggle-password');
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  button.textContent = show ? 'Hide' : 'Show';
+  button.setAttribute('aria-pressed', show ? 'true' : 'false');
+});
+
 document.getElementById('password-form').addEventListener('submit', async (event) => {
   event.preventDefault();
+  const form = event.currentTarget;
   const error = document.getElementById('password-error');
-  error.textContent = '';
-  try {
+  await submitSignIn(form, error, async () => {
     const result = await api('/api/auth/login/password', {
       method: 'POST',
       body: JSON.stringify({
@@ -662,16 +744,14 @@ document.getElementById('password-form').addEventListener('submit', async (event
     state.token = result.token;
     sessionStorage.setItem('nodevault_token', result.token);
     await enterDesk();
-  } catch (err) {
-    error.textContent = err.message;
-  }
+  });
 });
 
 document.getElementById('login-form').addEventListener('submit', async (event) => {
   event.preventDefault();
+  const form = event.currentTarget;
   const error = document.getElementById('login-error');
-  error.textContent = '';
-  try {
+  await submitSignIn(form, error, async () => {
     const result = await api('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({
@@ -682,9 +762,7 @@ document.getElementById('login-form').addEventListener('submit', async (event) =
     state.token = result.token;
     sessionStorage.setItem('nodevault_token', result.token);
     await enterDesk();
-  } catch (err) {
-    error.textContent = err.message;
-  }
+  });
 });
 
 document.getElementById('sign-out').addEventListener('click', showLogin);
@@ -796,20 +874,29 @@ if (themeSelect) {
 async function boot() {
   try {
     const config = await api('/api/public-config');
-    document.getElementById('password-form').hidden = !config.localLogin;
+    const passwordForm = document.getElementById('password-form');
+    const entraFold = document.getElementById('entra-fold');
+    passwordForm.hidden = !config.localLogin;
+    entraFold.open = !config.localLogin;
+    entraFold.classList.toggle('entra-primary', !config.localLogin);
     const domain = config.enforcedDomain
       ? `@${config.enforcedDomain}`
       : 'each bank tenant domain';
+    const sample = config.enforcedDomain ? `name@${config.enforcedDomain}` : 'name@bank';
+    document.getElementById('password-email').placeholder = sample;
+    document.getElementById('email').placeholder = sample;
     document.getElementById('domain-hint').textContent = config.localLogin
       ? `Password and Entra sign-in are both restricted to ${domain}.`
       : `Microsoft Entra sign-in is restricted to ${domain}.`;
+    document.getElementById('entra-hint').textContent = config.entraMode === 'mock'
+      ? 'This deployment checks a mock assertion, not a live Microsoft token.'
+      : 'Use your bank Microsoft Entra account.';
     if (config.entraMode === 'mock') {
-      const directory = await api('/api/auth/demo-directory');
-      const list = document.getElementById('demo-directory');
-      for (const user of directory.users) {
-        const item = document.createElement('li');
-        item.textContent = `${user.full_legal_name} · ${user.work_email} · ${user.system_role}`;
-        list.appendChild(item);
+      try {
+        const directory = await api('/api/auth/demo-directory');
+        renderDemoDirectory(directory.users || []);
+      } catch (_directoryError) {
+        document.getElementById('demo-panel').hidden = true;
       }
     }
   } catch (_error) {

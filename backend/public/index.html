@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
+<body class="is-gate">
   <header class="mast">
     <div class="brand">
       <span class="mark" aria-hidden="true">NV</span>
@@ -26,35 +26,69 @@
   </header>
 
   <main>
-    <section id="login-view" class="panel">
-      <div class="login-copy">
+    <section id="login-view" class="login-screen">
+      <div class="login-story">
         <p class="kicker">Branch treasury desk</p>
         <h2>Three books. One close.</h2>
-        <p>Kwacha, foreign currency, and Bancs. Values, not pieces. The book locks only when both vault custodians and the weekly coordinator sign, and the core position matches to the ngwee.</p>
+        <p class="login-lead">Kwacha, foreign notes, and Bancs. Amounts, not pieces. The book locks only when both vault custodians and the weekly coordinator sign, and the core position matches to the ngwee.</p>
+        <ol class="login-books">
+          <li>
+            <span>01</span>
+            <strong>Kwacha</strong>
+            <em>Re-issuable notes and coins</em>
+          </li>
+          <li>
+            <span>02</span>
+            <strong>Foreign notes</strong>
+            <em>Euro, sterling, dollar, rand</em>
+          </li>
+          <li>
+            <span>03</span>
+            <strong>Bancs</strong>
+            <em>Same sheet, separate balances</em>
+          </li>
+        </ol>
         <p class="hint" id="domain-hint"></p>
       </div>
       <div class="login-stack">
-        <form id="password-form" class="card" hidden>
-          <h3>Desk password</h3>
-          <p class="hint">Setup sign-in for this deployment. The closing PIN is a different secret and is not accepted here.</p>
+        <form id="password-form" class="card login-card" hidden>
+          <p class="kicker">Directory</p>
+          <h3>Sign in</h3>
+          <p class="hint">Work email and desk password. The closing PIN is a different secret and is not accepted here.</p>
           <label for="password-email">Work email</label>
-          <input id="password-email" name="email" type="email" autocomplete="username" required placeholder="name@demo-bank.example">
+          <input id="password-email" name="email" type="email" autocomplete="username" required placeholder="name@bank" spellcheck="false">
           <label for="password">Password</label>
-          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          <div class="field-secret">
+            <input id="password" name="password" type="password" autocomplete="current-password" required>
+            <button type="button" id="toggle-password" aria-pressed="false" aria-controls="password">Show</button>
+          </div>
           <p id="password-error" class="error" role="alert"></p>
           <button type="submit">Sign in</button>
         </form>
-        <form id="login-form" class="card">
-          <h3>Microsoft Entra</h3>
-          <label for="email">Work email</label>
-          <input id="email" name="email" type="email" autocomplete="username" required placeholder="name@demo-bank.example">
-          <label for="assertion">Entra assertion</label>
-          <input id="assertion" name="assertion" type="password" autocomplete="current-password" required>
-          <p id="login-error" class="error" role="alert"></p>
-          <button type="submit">Enter with Entra</button>
-          <button type="button" id="show-break-glass" class="ghost">Emergency break-glass</button>
+        <details id="entra-fold" class="entra-fold">
+          <summary>
+            <span>
+              <span class="kicker">Corporate</span>
+              <span class="fold-title">Microsoft Entra</span>
+            </span>
+            <span class="fold-action"></span>
+          </summary>
+          <form id="login-form">
+            <p class="hint" id="entra-hint">Use the bank directory assertion for this deployment.</p>
+            <label for="email">Work email</label>
+            <input id="email" name="email" type="email" autocomplete="username" required placeholder="name@bank" spellcheck="false">
+            <label for="assertion">Entra assertion</label>
+            <input id="assertion" name="assertion" type="password" autocomplete="current-password" required>
+            <p id="login-error" class="error" role="alert"></p>
+            <button type="submit">Enter with Entra</button>
+            <button type="button" id="show-break-glass" class="ghost">Emergency break-glass</button>
+          </form>
+        </details>
+        <section id="demo-panel" class="demo-panel" hidden>
+          <h3>Seeded names</h3>
+          <p class="hint">Choose a person to fill the work email. Type the desk password yourself.</p>
           <ul id="demo-directory" class="directory"></ul>
-        </form>
+        </section>
       </div>
     </section>
 
