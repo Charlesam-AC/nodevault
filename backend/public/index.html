@@ -100,7 +100,22 @@
     </section>
 
     <section id="desk-view" hidden>
+      <div id="acting-banner" class="banner acting-banner" hidden>
+        <p id="acting-copy"></p>
+        <button type="button" id="acting-return">Return to admin</button>
+      </div>
       <div id="maintenance-banner" class="banner" hidden></div>
+      <section id="act-as" class="act-as" hidden>
+        <div>
+          <h3>Test as a staff member</h3>
+          <p>Open the desk with that person's role. The books, the close, and the calendar follow their access.</p>
+        </div>
+        <label>Staff member
+          <select id="act-as-user"></select>
+        </label>
+        <button type="button" id="act-as-open">Open as this person</button>
+        <p id="act-as-error" class="error" role="alert"></p>
+      </section>
       <section id="entra-admin" class="entra-admin" hidden>
         <div>
           <h3>Microsoft Entra</h3>

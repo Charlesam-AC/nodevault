@@ -175,7 +175,7 @@ async function authenticateLocalPassword(db, { email, password, allowFrozenAdmin
   return user;
 }
 
-function signSession(user, { breakGlassId = null, expiresInSeconds = null } = {}) {
+function signSession(user, { breakGlassId = null, expiresInSeconds = null, actorUserId = null } = {}) {
   const secret = process.env.JWT_SECRET || '';
   if (secret.length < 32) {
     throw new Error('JWT_SECRET must be at least 32 characters');
@@ -187,6 +187,7 @@ function signSession(user, { breakGlassId = null, expiresInSeconds = null } = {}
     email: user.work_email,
   };
   if (breakGlassId) payload.break_glass_id = breakGlassId;
+  if (actorUserId) payload.actor_user_id = actorUserId;
   const expiresIn = expiresInSeconds || Number(process.env.SESSION_TTL_MINUTES || 480) * 60;
   return jwt.sign(payload, secret, { expiresIn });
 }
@@ -212,6 +213,23 @@ async function resolvePrincipal(db, token, now = new Date()) {
     throw new VaultError('ACCESS_DENIED', 'Access denied', 401);
   }
   assertCorporateDomain(user.work_email, user.corporate_domain);
+
+  let actorUserId = null;
+  let actorName = null;
+  if (payload.actor_user_id) {
+    const actorResult = await db.query(
+      `SELECT user_id, tenant_id, work_email, full_legal_name, is_active
+       FROM nodevault_users
+       WHERE user_id = $1`,
+      [payload.actor_user_id],
+    );
+    const actor = actorResult.rows[0];
+    if (!actor || !actor.is_active || !isMasterAdmin(actor) || Number(actor.tenant_id) !== Number(user.tenant_id)) {
+      throw new VaultError('ACCESS_DENIED', 'Access denied', 401);
+    }
+    actorUserId = Number(actor.user_id);
+    actorName = actor.full_legal_name;
+  }
 
   let breakGlassExpires = null;
   if (user.system_role === 'IT_SUPER_ADMIN') {
@@ -253,6 +271,8 @@ async function resolvePrincipal(db, token, now = new Date()) {
     bankName: user.bank_name,
     breakGlassId: payload.break_glass_id ? Number(payload.break_glass_id) : null,
     breakGlassExpires,
+    actorUserId,
+    actorName,
   };
 }
 

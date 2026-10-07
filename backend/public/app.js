@@ -623,6 +623,36 @@ async function renderEntraAdmin() {
   document.getElementById('entra-admin-copy').textContent = entraCopy(setting.entraEnabled);
 }
 
+function renderActAs() {
+  const panel = document.getElementById('act-as');
+  const banner = document.getElementById('acting-banner');
+  if (!panel || !banner) return;
+  if (state.me?.acting_as) {
+    panel.hidden = true;
+    banner.hidden = false;
+    document.getElementById('acting-copy').textContent = `Testing as ${state.me.full_legal_name} · ${state.me.system_role}.`;
+    document.getElementById('session-user').textContent = `Testing as ${state.me.full_legal_name} · ${state.me.system_role}`;
+    return;
+  }
+  banner.hidden = true;
+  if (!state.me?.can_act_as) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  const select = document.getElementById('act-as-user');
+  const current = select.value;
+  select.replaceChildren();
+  for (const user of state.directory) {
+    if (user.system_role === 'IT_SUPER_ADMIN' || user.user_id === state.me.user_id) continue;
+    const option = document.createElement('option');
+    option.value = String(user.user_id);
+    option.textContent = `${user.full_legal_name} · ${user.system_role}`;
+    select.appendChild(option);
+  }
+  if (current && [...select.options].some((option) => option.value === current)) select.value = current;
+}
+
 async function enterDesk() {
   state.me = await api('/api/me');
   const desk = await api('/api/books');
@@ -643,6 +673,7 @@ async function enterDesk() {
     banner.hidden = true;
   }
   await renderEntraAdmin();
+  renderActAs();
   renderCalendar(desk.calendar || {});
   renderRotation(desk.rotation || { posts: [] });
   renderFlags(desk.carryFlags);
@@ -871,6 +902,41 @@ async function refreshGate() {
   const config = await api('/api/public-config');
   applyPublicConfig(config);
 }
+
+document.getElementById('act-as-open').addEventListener('click', async () => {
+  const error = document.getElementById('act-as-error');
+  const button = document.getElementById('act-as-open');
+  error.textContent = '';
+  button.disabled = true;
+  try {
+    const result = await api('/api/auth/act-as', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: Number(document.getElementById('act-as-user').value) }),
+    });
+    state.token = result.token;
+    sessionStorage.setItem('nodevault_token', result.token);
+    await enterDesk();
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.getElementById('acting-return').addEventListener('click', async () => {
+  const button = document.getElementById('acting-return');
+  button.disabled = true;
+  try {
+    const result = await api('/api/auth/act-as/return', { method: 'POST', body: '{}' });
+    state.token = result.token;
+    sessionStorage.setItem('nodevault_token', result.token);
+    await enterDesk();
+  } catch (err) {
+    document.getElementById('acting-copy').textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+});
 
 document.getElementById('entra-toggle').addEventListener('click', async () => {
   const button = document.getElementById('entra-toggle');

@@ -228,6 +228,104 @@ test('the master admin password opens an IT super admin session while the seeded
   }
 });
 
+function request(pool, { method = 'GET', path, token, body }) {
+  const app = buildApp(pool);
+  const server = app.listen(0);
+  const payload = body === undefined ? null : JSON.stringify(body);
+  const { port } = server.address();
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port,
+      path,
+      method,
+      headers: {
+        ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        server.close();
+        resolve({ status: res.statusCode, body: data ? JSON.parse(data) : null });
+      });
+    });
+    req.on('error', (error) => {
+      server.close();
+      reject(error);
+    });
+    req.end(payload || undefined);
+  });
+}
+
+test('the master admin can open the desk as a staff member and return', async () => {
+  const { applicationPool } = pools();
+  const desk = await createDesk(pinHash);
+  process.env.SEED_DEMO_DATA = 'true';
+  process.env.MASTER_ADMIN_EMAIL = 'admin@demo-bank.example';
+  process.env.MASTER_ADMIN_PASSWORD = 'NodeVault-admin-2026';
+  process.env.DEMO_CLOSING_PIN = '135790';
+  const { ensureMasterAdmin } = require('../services/seed');
+  await ensureMasterAdmin(applicationPool);
+  await setPassword(CUSTODIAN);
+
+  const master = await postPassword(applicationPool, {
+    email: 'admin@demo-bank.example',
+    password: 'NodeVault-admin-2026',
+  });
+  assert.equal(master.status, 200);
+  const home = await request(applicationPool, { path: '/api/me', token: master.body.token });
+  assert.equal(home.body.can_act_as, true);
+
+  const custodianLogin = await postPassword(applicationPool, { email: CUSTODIAN, password: PASSWORD });
+  const refused = await request(applicationPool, {
+    method: 'POST',
+    path: '/api/auth/act-as',
+    token: custodianLogin.body.token,
+    body: { user_id: desk.users.c2.user_id },
+  });
+  assert.equal(refused.status, 403);
+  assert.equal(refused.body.error, 'WRONG_ROLE');
+
+  const blockedAdmin = await request(applicationPool, {
+    method: 'POST',
+    path: '/api/auth/act-as',
+    token: master.body.token,
+    body: { user_id: desk.users.admin.user_id },
+  });
+  assert.equal(blockedAdmin.status, 403);
+
+  const acting = await request(applicationPool, {
+    method: 'POST',
+    path: '/api/auth/act-as',
+    token: master.body.token,
+    body: { user_id: desk.users.c1.user_id },
+  });
+  assert.equal(acting.status, 200);
+  assert.equal(acting.body.user.system_role, 'VAULT_CUSTODIAN');
+  assert.equal(acting.body.user.work_email, CUSTODIAN);
+  const asCustodian = await request(applicationPool, { path: '/api/me', token: acting.body.token });
+  assert.equal(asCustodian.body.system_role, 'VAULT_CUSTODIAN');
+  assert.equal(asCustodian.body.acting_as, true);
+  assert.equal(asCustodian.body.can_act_as, false);
+  const books = await request(applicationPool, { path: '/api/books', token: acting.body.token });
+  assert.equal(books.status, 200);
+  assert.ok(books.body.books.some((book) => book.book_class === 'KWACHA_TREASURY'));
+
+  const back = await request(applicationPool, {
+    method: 'POST',
+    path: '/api/auth/act-as/return',
+    token: acting.body.token,
+    body: {},
+  });
+  assert.equal(back.status, 200);
+  assert.equal(back.body.user.system_role, 'IT_SUPER_ADMIN');
+  const restored = await request(applicationPool, { path: '/api/me', token: back.body.token });
+  assert.equal(restored.body.can_act_as, true);
+  assert.equal(restored.body.acting_as, false);
+});
+
 test('a frozen IT super admin cannot use a correct directory password', async () => {
   const { applicationPool } = pools();
   await createDesk(pinHash);

@@ -2,7 +2,7 @@
   --ink: #163044;
   --ink-soft: #3d5568;
   --mast: #102833;
-  --paper: #e7f1f6;
+  --paper: #108a7f;
   --page-left: #e5f3f8;
   --page-right: #e7f4ee;
   --rule: #7eabbf;
@@ -13,9 +13,7 @@
   --line: #d5e3ea;
   color: var(--ink);
   font-family: "Public Sans", "Segoe UI", sans-serif;
-  background:
-    radial-gradient(1200px 400px at 10% -10%, #d5e7ef, transparent 50%),
-    var(--paper);
+  background: #108a7f;
 }
 
 * { box-sizing: border-box; }
@@ -381,6 +379,8 @@ button[type="submit"], #open-close {
   padding: 0.65rem 0.9rem;
 }
 .hint, .status, .formula { color: var(--ink-soft); margin: 0.35rem 0; }
+body:not(.is-gate) .status,
+body:not(.is-gate) .formula { color: #f7fbfb; }
 .error { color: var(--seal); min-height: 1.2rem; margin-top: 0.6rem; }
 .book-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .book-tabs button {
@@ -651,7 +651,23 @@ dialog { width: min(100% - 2rem, 40rem); }
 dialog::backdrop { background: rgba(16, 40, 51, 0.45); }
 .pin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
-footer { padding: 1.5rem 1.25rem 2rem; color: var(--ink-soft); font-size: 0.82rem; }
+footer { padding: 1.5rem 1.25rem 2rem; color: rgba(247, 251, 251, 0.82); font-size: 0.82rem; }
+.act-as {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  background: white;
+  border: 1px solid var(--line);
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.8rem;
+}
+.act-as h3 { font-size: 1.05rem; }
+.act-as p { color: var(--ink-soft); margin-top: 0.25rem; flex: 1 1 16rem; }
+.act-as select { width: min(100%, 24rem); margin: 0; }
+.act-as button { margin: 0; }
+.acting-banner { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.acting-banner button { margin: 0; background: var(--mast); color: white; border: 1px solid var(--mast); padding: 0.4rem 0.75rem; }
 
 @media (min-width: 1800px) {
   main { max-width: min(2400px, calc(100% - 2.5rem)); }

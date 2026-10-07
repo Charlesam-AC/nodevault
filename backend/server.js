@@ -22,6 +22,7 @@ const { getBookView, insertLedgerRow } = require('./services/ledger');
 const { executeThreePersonVaultLock, dispatchClosing } = require('./services/closing');
 const { openBreakGlass } = require('./services/breakglass');
 const { readEntraEnabled, setEntraEnabled } = require('./services/entraToggle');
+const { actAsUser, returnToAdmin } = require('./services/actAs');
 const { toDecimalString } = require('./services/money');
 const {
   authenticateCorporateIdentity,
@@ -29,6 +30,7 @@ const {
   localLoginEnabled,
   signSession,
   requireAuth,
+  isMasterAdmin,
 } = require('./middleware/auth');
 
 function sessionBody(user) {
@@ -129,6 +131,14 @@ function buildApp(db) {
     res.json({ token, user: sessionBody(user) });
   }));
 
+  app.post('/api/auth/act-as', guard, asyncRoute(async (req, res) => {
+    res.json(await actAsUser(db, req.user, req.body.user_id));
+  }));
+
+  app.post('/api/auth/act-as/return', guard, asyncRoute(async (req, res) => {
+    res.json(await returnToAdmin(db, req.user));
+  }));
+
   app.post('/api/auth/break-glass', asyncRoute(async (req, res) => {
     const opened = await openBreakGlass(db, req.body);
     res.json(opened);
@@ -145,6 +155,9 @@ function buildApp(db) {
       bank_name: req.user.bankName,
       break_glass: Boolean(req.user.breakGlassId),
       break_glass_expires_at: req.user.breakGlassExpires,
+      can_act_as: isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId,
+      acting_as: Boolean(req.user.actorUserId),
+      actor_name: req.user.actorName,
     });
   });
 
