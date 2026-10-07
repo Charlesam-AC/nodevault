@@ -179,13 +179,6 @@ main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
   color: var(--ink-soft);
   background: transparent;
 }
-.demo-panel {
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid var(--line);
-  padding: 0.9rem 1rem 1rem;
-}
-.demo-panel h3 { font-size: 1.15rem; }
-.demo-panel[hidden],
 #password-form[hidden],
 #login-view[hidden] { display: none; }
 .card, dialog {
@@ -222,50 +215,6 @@ button[type="submit"], #open-close {
 }
 .hint, .status, .formula { color: var(--ink-soft); margin: 0.35rem 0; }
 .error { color: var(--seal); min-height: 1.2rem; margin-top: 0.6rem; }
-.directory {
-  list-style: none;
-  padding: 0;
-  margin: 0.65rem 0 0;
-  display: grid;
-  gap: 0.35rem;
-  max-height: 16rem;
-  overflow: auto;
-}
-.directory button {
-  width: 100%;
-  margin: 0;
-  text-align: left;
-  background: white;
-  border: 1px solid var(--line);
-  padding: 0.45rem 0.6rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.75rem;
-}
-.directory button:hover,
-.directory button[aria-pressed="true"] { border-color: #1c6e90; background: #f3fafc; }
-.directory .who { display: block; font-weight: 600; color: var(--ink); }
-.directory .meta {
-  display: block;
-  margin-top: 0.1rem;
-  color: var(--ink-soft);
-  font-size: 0.75rem;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 16rem;
-}
-.directory .role {
-  flex: none;
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #1c6e90;
-  text-align: right;
-}
-
 .book-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .book-tabs button {
   border: 1px solid var(--rule);
@@ -565,5 +514,4 @@ footer { padding: 1.5rem 1.25rem 2rem; color: var(--ink-soft); font-size: 0.82re
   .login-screen { display: flex; flex-direction: column; min-height: 0; gap: 1.35rem; padding-top: 0.4rem; }
   .login-story h2 { font-size: 2.35rem; }
   .card, .login-stack, dialog { width: 100%; }
-  .directory .meta { max-width: 11rem; }
 }

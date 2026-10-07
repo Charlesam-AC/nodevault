@@ -640,16 +640,6 @@ async function enterDesk() {
     : 'No treasury book has been opened yet.';
 }
 
-const ROLE_LABEL = {
-  VAULT_CUSTODIAN: 'Vault custodian',
-  ATM_CUSTODIAN: 'ATM custodian',
-  HEAD_TELLER_COORDINATOR: 'Head teller',
-  TELLER: 'Branch teller',
-  AUDITOR: 'Auditor',
-  IT_SUPER_ADMIN: 'IT super admin',
-  REGIONAL_OPS_MANAGER: 'Regional operations',
-};
-
 function showLogin() {
   state.token = '';
   sessionStorage.removeItem('nodevault_token');
@@ -657,51 +647,6 @@ function showLogin() {
   deskView.hidden = true;
   document.body.classList.add('is-gate');
   document.getElementById('sign-out').hidden = true;
-}
-
-function selectDemoUser(email) {
-  document.getElementById('password-email').value = email;
-  document.getElementById('email').value = email;
-  for (const button of document.querySelectorAll('#demo-directory button')) {
-    button.setAttribute('aria-pressed', button.dataset.email === email ? 'true' : 'false');
-  }
-  const passwordForm = document.getElementById('password-form');
-  const focus = passwordForm.hidden ? document.getElementById('assertion') : document.getElementById('password');
-  focus.focus();
-}
-
-function renderDemoDirectory(users) {
-  const panel = document.getElementById('demo-panel');
-  const list = document.getElementById('demo-directory');
-  list.replaceChildren();
-  if (!users.length) {
-    panel.hidden = true;
-    return;
-  }
-  for (const user of users) {
-    const item = document.createElement('li');
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.dataset.email = user.work_email;
-    button.setAttribute('aria-pressed', 'false');
-    const identity = document.createElement('span');
-    const who = document.createElement('span');
-    who.className = 'who';
-    who.textContent = user.full_legal_name;
-    const meta = document.createElement('span');
-    meta.className = 'meta';
-    meta.textContent = user.work_email;
-    identity.append(who, meta);
-    const role = document.createElement('span');
-    role.className = 'role';
-    const label = ROLE_LABEL[user.system_role] || user.system_role;
-    role.textContent = user.system_role === 'IT_SUPER_ADMIN' ? `${label} · Frozen` : label;
-    button.append(identity, role);
-    button.addEventListener('click', () => selectDemoUser(user.work_email));
-    item.appendChild(button);
-    list.appendChild(item);
-  }
-  panel.hidden = false;
 }
 
 async function submitSignIn(form, error, request) {
@@ -891,14 +836,6 @@ async function boot() {
     document.getElementById('entra-hint').textContent = config.entraMode === 'mock'
       ? 'This deployment checks a mock assertion, not a live Microsoft token.'
       : 'Use your bank Microsoft Entra account.';
-    if (config.entraMode === 'mock') {
-      try {
-        const directory = await api('/api/auth/demo-directory');
-        renderDemoDirectory(directory.users || []);
-      } catch (_directoryError) {
-        document.getElementById('demo-panel').hidden = true;
-      }
-    }
   } catch (_error) {
     document.getElementById('login-error').textContent = 'The desk configuration could not be read.';
   }
