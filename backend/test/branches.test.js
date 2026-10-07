@@ -84,7 +84,20 @@ test('the published FNB Zambia list names Commercial Branch and Solwezi', () => 
   assert.equal(commercial.province, 'Lusaka');
   assert.equal(solwezi.branch_name, 'Solwezi Branch');
   assert.equal(kitwe.location_name, 'Kitwe');
-  assert.ok(KNOWN_BRANCHES.length >= 12);
+  for (const [code, name] of [
+    ['260039', 'Acacia Premier Branch'],
+    ['261238', 'Choma Branch'],
+    ['262874', 'Kalumbila Branch'],
+    ['260247', 'Kitwe Industrial Branch'],
+    ['260261', 'Kitwe Private Clients'],
+    ['260741', 'Luanshya Branch'],
+    ['260061', 'Lusaka Private Clients'],
+    ['263613', 'Mazabuka Branch'],
+    ['262319', 'Mkushi Branch'],
+  ]) {
+    assert.equal(KNOWN_BRANCHES.find((branch) => branch.branch_code === code).branch_name, name);
+  }
+  assert.equal(KNOWN_BRANCHES.length, 23);
 });
 
 test('the master admin can add a branch, assign a person, and close it', async () => {
