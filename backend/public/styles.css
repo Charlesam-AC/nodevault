@@ -25,6 +25,7 @@ body:not(.is-gate) select,
 body:not(.is-gate) textarea { color: #1f2937; background: #fff; }
 #act-as,
 #entra-admin,
+#branch-panel,
 #staff-panel,
 #calendar-panel,
 #rotation-panel article,
@@ -798,6 +799,8 @@ footer { padding: 1.5rem 1.25rem 2rem; color: #ffffff; font-size: 0.82rem; }
   color: #102833;
   border: 1px solid #b7c9d2;
 }
+#branch-add,
+#branch-edit,
 #staff-add,
 #staff-edit,
 #staff-assign {
@@ -808,16 +811,49 @@ footer { padding: 1.5rem 1.25rem 2rem; color: #ffffff; font-size: 0.82rem; }
   padding-top: 0.85rem;
   border-top: 1px solid #d5e3ea;
 }
+#branch-add[hidden],
+#branch-edit[hidden],
 #staff-add[hidden],
 #staff-edit[hidden],
 #staff-assign[hidden] { display: none; }
+#branch-panel label,
 #staff-panel label { margin-top: 0.35rem; color: #102833; }
 #staff-panel .hint { color: #3d5568; }
 @media (min-width: 720px) {
+  #branch-add,
+  #branch-edit,
   #staff-add,
   #staff-edit,
   #staff-assign { grid-template-columns: 1fr 1fr; }
+  #branch-panel .staff-span,
   #staff-panel .staff-span { grid-column: 1 / -1; }
+}
+.branch-list { display: grid; gap: 0.6rem; margin-top: 0.75rem; }
+@media (min-width: 900px) {
+  .branch-list { grid-template-columns: 1fr 1fr; }
+}
+#branch-panel h3,
+#branch-panel h4 { color: #102833; margin: 0; }
+#branch-panel h4 { font-family: "Public Sans", "Segoe UI", sans-serif; font-size: 0.95rem; font-weight: 650; }
+#branch-copy { color: #3d5568; }
+#branch-note:empty,
+#branch-error:empty,
+#branch-add-error:empty,
+#branch-edit-error:empty { display: none; margin: 0; padding: 0; min-height: 0; }
+.branch-assign { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.55rem; align-items: center; }
+.branch-assign select { width: auto; min-width: 12rem; flex: 1; margin-top: 0; }
+#branch-panel button:not(.staff-quiet) {
+  background: #102833;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.45rem 0.75rem;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+}
+#branch-panel button.staff-quiet {
+  color: #102833 !important;
+  -webkit-text-fill-color: #102833;
+  background: #ffffff;
 }
 
 @media (min-width: 1800px) {
@@ -830,6 +866,7 @@ footer { padding: 1.5rem 1.25rem 2rem; color: #ffffff; font-size: 0.82rem; }
   footer,
   #login-view,
   #calendar-panel,
+  #branch-panel,
   #staff-panel,
   #rotation-panel,
   #handover-panel,
@@ -917,6 +954,7 @@ body:not(.is-gate) :is(input, textarea)::placeholder {
 }
 #act-as,
 #entra-admin,
+#branch-panel,
 #staff-panel,
 #calendar-panel,
 #rotation-panel article,

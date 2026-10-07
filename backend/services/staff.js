@@ -187,7 +187,7 @@ async function listStaff(db, actor, now = new Date()) {
     db.query(
       `SELECT branch_id, branch_code, branch_name
        FROM branches
-       WHERE tenant_id = $1
+       WHERE tenant_id = $1 AND is_active = true
        ORDER BY branch_code`,
       [actor.tenantId],
     ),

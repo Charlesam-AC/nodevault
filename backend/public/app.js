@@ -6,6 +6,7 @@ const state = {
   book: null,
   directory: [],
   staff: null,
+  branches: null,
   businessDate: '',
   dates: [],
   amendingLine: null,
@@ -892,6 +893,180 @@ function openStaffAssign(user) {
   form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+function placeText(branch) {
+  const parts = [branch.province, branch.location_name].filter(Boolean);
+  return parts.join(' · ');
+}
+
+async function renderBranches() {
+  const panel = document.getElementById('branch-panel');
+  if (!panel) return;
+  const show = state.me?.system_role === 'AUDITOR' || state.me?.can_act_as;
+  if (!show) {
+    panel.hidden = true;
+    state.branches = null;
+    return;
+  }
+  panel.hidden = false;
+  const error = document.getElementById('branch-error');
+  error.textContent = '';
+  let register;
+  try {
+    register = await api('/api/branches');
+  } catch (err) {
+    error.textContent = err.message;
+    document.getElementById('branch-list').replaceChildren();
+    document.getElementById('branch-add').hidden = true;
+    document.getElementById('branch-edit').hidden = true;
+    return;
+  }
+  state.branches = register;
+  document.getElementById('branch-copy').textContent = register.can_manage
+    ? 'Add a branch, correct its name and code, assign staff to it, or close it. The list includes branches published by First National Bank Zambia.'
+    : 'Every branch on this bank, and the staff attached to each one.';
+  document.getElementById('branch-add').hidden = !register.can_manage;
+  document.getElementById('branch-edit').hidden = true;
+  const host = document.getElementById('branch-list');
+  host.replaceChildren();
+  if (!register.branches.length) {
+    const empty = document.createElement('p');
+    empty.className = 'staff-meta';
+    empty.textContent = 'No branches are on this bank yet.';
+    host.appendChild(empty);
+    return;
+  }
+  for (const branch of register.branches) {
+    const card = document.createElement('article');
+    card.className = `staff-card${branch.is_active ? '' : ' is-removed'}`;
+    const title = document.createElement('h4');
+    title.textContent = branch.branch_name;
+    const code = document.createElement('p');
+    code.className = 'staff-meta';
+    const where = placeText(branch);
+    code.textContent = where ? `${branch.branch_code} · ${where}` : branch.branch_code;
+    const people = document.createElement('p');
+    people.className = 'staff-meta';
+    if (!branch.is_active) {
+      people.textContent = 'Closed.';
+    } else if (!branch.staff.length) {
+      people.textContent = 'No staff assigned.';
+    } else {
+      const names = branch.staff.map((person) => person.full_legal_name);
+      people.textContent = names.length === 1
+        ? names[0]
+        : `${names.length} people · ${names.slice(0, 4).join(', ')}${names.length > 4 ? ', …' : ''}`;
+    }
+    card.append(title, code, people);
+    if (register.can_manage && branch.is_active) {
+      const choices = (register.assignable || []).filter((person) => person.branch_id !== branch.branch_id);
+      if (choices.length) {
+        const row = document.createElement('div');
+        row.className = 'branch-assign';
+        const select = document.createElement('select');
+        select.setAttribute('aria-label', `Assign a person to ${branch.branch_name}`);
+        for (const person of choices) {
+          const option = document.createElement('option');
+          option.value = String(person.user_id);
+          option.textContent = person.full_legal_name;
+          select.appendChild(option);
+        }
+        const assign = document.createElement('button');
+        assign.type = 'button';
+        assign.textContent = 'Assign to this branch';
+        assign.addEventListener('click', () => assignPersonToBranch(branch, select.value));
+        row.append(select, assign);
+        card.appendChild(row);
+      }
+      const actions = document.createElement('div');
+      actions.className = 'staff-actions';
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'staff-quiet';
+      edit.textContent = 'Correct details';
+      edit.addEventListener('click', () => openBranchEdit(branch));
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'staff-quiet';
+      close.textContent = 'Close branch';
+      close.addEventListener('click', () => closeBranchDesk(branch));
+      actions.append(edit, close);
+      card.appendChild(actions);
+    } else if (register.can_manage) {
+      const actions = document.createElement('div');
+      actions.className = 'staff-actions';
+      const reopen = document.createElement('button');
+      reopen.type = 'button';
+      reopen.textContent = 'Reopen branch';
+      reopen.addEventListener('click', () => reopenBranchDesk(branch));
+      actions.appendChild(reopen);
+      card.appendChild(actions);
+    }
+    host.appendChild(card);
+  }
+}
+
+function openBranchEdit(branch) {
+  document.getElementById('branch-note').textContent = '';
+  document.getElementById('branch-edit-error').textContent = '';
+  const form = document.getElementById('branch-edit');
+  form.hidden = false;
+  document.getElementById('branch-edit-id').value = String(branch.branch_id);
+  document.getElementById('branch-edit-title').textContent = `Correct ${branch.branch_name}`;
+  document.getElementById('branch-edit-name').value = branch.branch_name;
+  document.getElementById('branch-edit-code').value = branch.branch_code;
+  document.getElementById('branch-edit-province').value = branch.province || '';
+  document.getElementById('branch-edit-location').value = branch.location_name || '';
+  form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function assignPersonToBranch(branch, userId) {
+  const error = document.getElementById('branch-error');
+  const note = document.getElementById('branch-note');
+  error.textContent = '';
+  note.textContent = '';
+  try {
+    const saved = await api(`/api/branches/${branch.branch_id}/staff`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: Number(userId) }),
+    });
+    note.textContent = `${saved.full_legal_name} is assigned to ${branch.branch_name}.`;
+    await enterDesk(state.businessDate || undefined);
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
+async function closeBranchDesk(branch) {
+  const error = document.getElementById('branch-error');
+  const note = document.getElementById('branch-note');
+  error.textContent = '';
+  note.textContent = '';
+  try {
+    await api(`/api/branches/${branch.branch_id}`, { method: 'DELETE' });
+    note.textContent = `${branch.branch_name} is closed.`;
+    await enterDesk(state.businessDate || undefined);
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
+async function reopenBranchDesk(branch) {
+  const error = document.getElementById('branch-error');
+  const note = document.getElementById('branch-note');
+  error.textContent = '';
+  note.textContent = '';
+  try {
+    await api(`/api/branches/${branch.branch_id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active: true }),
+    });
+    note.textContent = `${branch.branch_name} is open again.`;
+    await enterDesk(state.businessDate || undefined);
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
 async function renderStaff() {
   const panel = document.getElementById('staff-panel');
   if (!panel) return;
@@ -1179,6 +1354,12 @@ async function enterDesk(date) {
     if (entra) entra.hidden = true;
   }
   renderActAs();
+  try {
+    await renderBranches();
+  } catch (_error) {
+    const branches = document.getElementById('branch-panel');
+    if (branches) branches.hidden = true;
+  }
   try {
     await renderStaff();
   } catch (_error) {
@@ -1657,6 +1838,66 @@ document.getElementById('entra-toggle').addEventListener('click', async () => {
   } finally {
     button.disabled = false;
   }
+});
+
+document.getElementById('branch-add').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const error = document.getElementById('branch-add-error');
+  const note = document.getElementById('branch-note');
+  const button = document.getElementById('branch-add-submit');
+  error.textContent = '';
+  note.textContent = '';
+  button.disabled = true;
+  try {
+    const created = await api('/api/branches', {
+      method: 'POST',
+      body: JSON.stringify({
+        branch_name: document.getElementById('branch-name').value,
+        branch_code: document.getElementById('branch-code').value,
+        province: document.getElementById('branch-province').value,
+        location_name: document.getElementById('branch-location').value,
+      }),
+    });
+    document.getElementById('branch-add').reset();
+    note.textContent = `${created.branch_name} is on the branch list.`;
+    await enterDesk(state.businessDate || undefined);
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.getElementById('branch-edit').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const error = document.getElementById('branch-edit-error');
+  const note = document.getElementById('branch-note');
+  const button = document.getElementById('branch-edit-submit');
+  error.textContent = '';
+  note.textContent = '';
+  button.disabled = true;
+  try {
+    const saved = await api(`/api/branches/${document.getElementById('branch-edit-id').value}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        branch_name: document.getElementById('branch-edit-name').value,
+        branch_code: document.getElementById('branch-edit-code').value,
+        province: document.getElementById('branch-edit-province').value,
+        location_name: document.getElementById('branch-edit-location').value,
+      }),
+    });
+    note.textContent = `${saved.branch_name} is updated.`;
+    await enterDesk(state.businessDate || undefined);
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.getElementById('branch-edit-cancel').addEventListener('click', () => {
+  document.getElementById('branch-edit').hidden = true;
+  document.getElementById('branch-edit-error').textContent = '';
 });
 
 document.getElementById('staff-add').addEventListener('submit', async (event) => {

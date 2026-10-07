@@ -53,7 +53,7 @@ async function branchesInScope(db, tenantId, scope, { province, locationName, br
   if (scope === 'TENANT') {
     const result = await db.query(
       `SELECT branch_id, branch_code, branch_name, province, location_name
-       FROM branches WHERE tenant_id = $1 ORDER BY branch_code`,
+       FROM branches WHERE tenant_id = $1 AND is_active = true ORDER BY branch_code`,
       [tenantId],
     );
     return result.rows;
@@ -64,7 +64,7 @@ async function branchesInScope(db, tenantId, scope, { province, locationName, br
     const result = await db.query(
       `SELECT branch_id, branch_code, branch_name, province, location_name
        FROM branches
-       WHERE tenant_id = $1 AND lower(btrim(province)) = lower($2)
+       WHERE tenant_id = $1 AND is_active = true AND lower(btrim(province)) = lower($2)
        ORDER BY branch_code`,
       [tenantId, name],
     );
@@ -77,7 +77,7 @@ async function branchesInScope(db, tenantId, scope, { province, locationName, br
     const result = await db.query(
       `SELECT branch_id, branch_code, branch_name, province, location_name
        FROM branches
-       WHERE tenant_id = $1 AND lower(btrim(location_name)) = lower($2)
+       WHERE tenant_id = $1 AND is_active = true AND lower(btrim(location_name)) = lower($2)
        ORDER BY branch_code`,
       [tenantId, name],
     );
@@ -90,7 +90,7 @@ async function branchesInScope(db, tenantId, scope, { province, locationName, br
     const result = await db.query(
       `SELECT branch_id, branch_code, branch_name, province, location_name
        FROM branches
-       WHERE tenant_id = $1 AND branch_id = ANY($2::int[])
+       WHERE tenant_id = $1 AND is_active = true AND branch_id = ANY($2::int[])
        ORDER BY branch_code`,
       [tenantId, ids],
     );
@@ -498,7 +498,7 @@ async function calendarDesk(db, tenantId, branchId, actor, now = new Date()) {
   );
   const directory = await db.query(
     `SELECT branch_id, branch_code, branch_name, province, location_name
-     FROM branches WHERE tenant_id = $1 ORDER BY branch_code`,
+     FROM branches WHERE tenant_id = $1 AND is_active = true ORDER BY branch_code`,
     [tenantId],
   );
   let nonWorking = null;

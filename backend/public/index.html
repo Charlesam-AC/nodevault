@@ -133,6 +133,65 @@
           <span class="pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 translate-x-5 rounded-full bg-white shadow transition-transform"></span>
         </button>
       </section>
+      <section id="branch-panel" hidden class="mb-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm" aria-label="Branches">
+        <h3 class="text-base font-semibold text-gray-900">Branches</h3>
+        <p id="branch-copy" class="mt-1 text-sm text-gray-600"></p>
+        <form id="branch-add" hidden>
+          <h4 class="staff-span">Add a branch</h4>
+          <label>Branch name
+            <input id="branch-name" maxlength="120" required autocomplete="off">
+          </label>
+          <label>Branch code
+            <input id="branch-code" maxlength="20" required autocomplete="off" placeholder="260001">
+          </label>
+          <label>Province
+            <input id="branch-province" maxlength="80" list="branch-provinces" autocomplete="off">
+          </label>
+          <label>Town
+            <input id="branch-location" maxlength="120" autocomplete="off">
+          </label>
+          <datalist id="branch-provinces">
+            <option value="Lusaka"></option>
+            <option value="Copperbelt"></option>
+            <option value="Southern"></option>
+            <option value="Eastern"></option>
+            <option value="Central"></option>
+            <option value="North-Western"></option>
+            <option value="Western"></option>
+            <option value="Luapula"></option>
+            <option value="Muchinga"></option>
+            <option value="Northern"></option>
+          </datalist>
+          <p id="branch-add-error" class="error staff-span" role="alert"></p>
+          <div class="staff-span">
+            <button type="submit" id="branch-add-submit">Add this branch</button>
+          </div>
+        </form>
+        <p id="branch-note" class="staff-note" role="status"></p>
+        <p id="branch-error" class="error" role="alert"></p>
+        <div id="branch-list" class="branch-list"></div>
+        <form id="branch-edit" hidden>
+          <h4 class="staff-span" id="branch-edit-title">Correct this branch</h4>
+          <input id="branch-edit-id" type="hidden">
+          <label>Branch name
+            <input id="branch-edit-name" maxlength="120" required autocomplete="off">
+          </label>
+          <label>Branch code
+            <input id="branch-edit-code" maxlength="20" required autocomplete="off">
+          </label>
+          <label>Province
+            <input id="branch-edit-province" maxlength="80" list="branch-provinces" autocomplete="off">
+          </label>
+          <label>Town
+            <input id="branch-edit-location" maxlength="120" autocomplete="off">
+          </label>
+          <p id="branch-edit-error" class="error staff-span" role="alert"></p>
+          <div class="staff-actions staff-span">
+            <button type="submit" id="branch-edit-submit">Save branch</button>
+            <button type="button" id="branch-edit-cancel" class="staff-quiet">Cancel</button>
+          </div>
+        </form>
+      </section>
       <section id="staff-panel" hidden class="mb-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm" aria-label="Staff register">
         <h3 class="text-base font-semibold text-gray-900">Staff register</h3>
         <p id="staff-copy" class="mt-1 text-sm text-gray-600"></p>

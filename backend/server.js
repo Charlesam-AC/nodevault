@@ -26,6 +26,14 @@ const { openBreakGlass } = require('./services/breakglass');
 const { readEntraEnabled, setEntraEnabled } = require('./services/entraToggle');
 const { actAsUser, returnToAdmin } = require('./services/actAs');
 const { listStaff, addStaff, updateStaff, removeStaff, assignPost } = require('./services/staff');
+const {
+  listBranches,
+  addBranch,
+  updateBranch,
+  closeBranch,
+  assignBranch,
+  ensureKnownBranches,
+} = require('./services/branches');
 const { toDecimalString } = require('./services/money');
 const {
   authenticateCorporateIdentity,
@@ -235,6 +243,26 @@ function buildApp(db) {
 
   app.delete('/api/staff/:userId', guard, asyncRoute(async (req, res) => {
     res.json(await removeStaff(db, req.user, req.params.userId));
+  }));
+
+  app.get('/api/branches', guard, asyncRoute(async (req, res) => {
+    res.json(await listBranches(db, req.user));
+  }));
+
+  app.post('/api/branches', guard, asyncRoute(async (req, res) => {
+    res.status(201).json(await addBranch(db, req.user, req.body || {}));
+  }));
+
+  app.post('/api/branches/:branchId/staff', guard, asyncRoute(async (req, res) => {
+    res.json(await assignBranch(db, req.user, req.params.branchId, (req.body || {}).user_id));
+  }));
+
+  app.patch('/api/branches/:branchId', guard, asyncRoute(async (req, res) => {
+    res.json(await updateBranch(db, req.user, req.params.branchId, req.body || {}));
+  }));
+
+  app.delete('/api/branches/:branchId', guard, asyncRoute(async (req, res) => {
+    res.json(await closeBranch(db, req.user, req.params.branchId));
   }));
 
   app.get('/api/books', guard, asyncRoute(async (req, res) => {
@@ -522,6 +550,7 @@ async function start() {
   if (process.env.SEED_DEMO_DATA === 'true') {
     await seedDemo(db);
     await ensureMasterAdmin(db);
+    await ensureKnownBranches(db);
     const working = await ensureWorkingBooks(db);
     console.log(JSON.stringify({ event: 'working_books', ...working }));
   }
