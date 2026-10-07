@@ -401,10 +401,13 @@ button[type="submit"], #open-close {
 }
 .chips { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.4rem 0 0.8rem; }
 .chips span {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-family: "IBM Plex Sans", "Public Sans", "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  font-weight: 500;
   background: white;
   border: 1px solid var(--rule);
-  padding: 0.25rem 0.5rem;
+  padding: 0.25rem 0.55rem;
 }
 .ledger-margin {
   --ledger-margin: #ffffff;
@@ -453,6 +456,8 @@ button[type="submit"], #open-close {
 .ledger-scroll {
   overflow-x: auto;
   background: var(--ledger-margin);
+  scrollbar-width: thin;
+  scrollbar-color: #1c6e90 #e7f3f6;
 }
 .sheet {
   width: max-content;
@@ -483,10 +488,11 @@ button[type="submit"], #open-close {
 }
 .ledger-table th, .ledger-table td {
   white-space: nowrap;
-  padding: 0.22rem 0.42rem;
+  padding: 0.28rem 0.48rem;
   border-right: 1px solid var(--ledger-rule-col);
   border-bottom: 1px solid var(--ledger-rule);
   text-align: right;
+  vertical-align: middle;
   color: var(--ledger-value);
   background: var(--ledger-paper);
 }
@@ -501,10 +507,25 @@ button[type="submit"], #open-close {
   background: var(--ledger-paper);
 }
 .ledger-table td {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-family: "Public Sans", "Segoe UI", sans-serif;
   font-size: 0.82rem;
+  font-weight: 500;
 }
-.ledger-table td.dynamic-fit-value { min-width: 5.1rem; }
+.ledger-table td.dynamic-fit-value,
+.ledger-table td.col-no {
+  font-family: "IBM Plex Sans", "Public Sans", "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  font-variant-ligatures: none;
+  font-weight: 500;
+}
+.ledger-table td.dynamic-fit-value {
+  min-width: 4.6rem;
+  padding-right: 0.55rem;
+  padding-left: 0.62rem;
+}
+.ledger-table td.col-no { font-weight: 600; text-align: center; }
+tr[data-label="Bal c/d"] td.dynamic-fit-value { font-weight: 600; }
 .ledger-th-text { display: inline-block; white-space: nowrap; color: var(--ledger-ink); }
 .page-left { background: var(--ledger-paper); }
 .page-right { background: var(--ledger-paper-alt); }
