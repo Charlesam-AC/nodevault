@@ -1224,6 +1224,51 @@ body:not(.is-gate) button[type="submit"],
   -webkit-text-fill-color: #102833;
   background: #ffffff;
 }
+#branch-panel button.fold-toggle,
+#staff-panel button.fold-toggle,
+#calendar-panel button.fold-toggle {
+  background: #ffffff !important;
+  color: #102833 !important;
+  -webkit-text-fill-color: #102833;
+  border-radius: 0;
+  width: 100%;
+  padding: 0.85rem 1rem;
+}
+#branch-panel button.fold-toggle .fold-title,
+#staff-panel button.fold-toggle .fold-title,
+#calendar-panel button.fold-toggle .fold-title {
+  color: #102833 !important;
+  -webkit-text-fill-color: #102833;
+}
+#branch-panel button.fold-toggle .fold-count,
+#staff-panel button.fold-toggle .fold-count,
+#calendar-panel button.fold-toggle .fold-count {
+  color: #3d5568 !important;
+  -webkit-text-fill-color: #3d5568;
+}
+#branch-panel button.fold-toggle .fold-kicker,
+#staff-panel button.fold-toggle .fold-kicker,
+#calendar-panel button.fold-toggle .fold-kicker {
+  color: #0e6e86 !important;
+  -webkit-text-fill-color: #0e6e86;
+}
+#branch-panel button.fold-toggle .fold-switch,
+#staff-panel button.fold-toggle .fold-switch,
+#calendar-panel button.fold-toggle .fold-switch {
+  background: #102833 !important;
+}
+#branch-panel button.fold-toggle .fold-switch,
+#staff-panel button.fold-toggle .fold-switch,
+#calendar-panel button.fold-toggle .fold-switch,
+#branch-panel button.fold-toggle .fold-word,
+#staff-panel button.fold-toggle .fold-word,
+#calendar-panel button.fold-toggle .fold-word,
+#branch-panel button.fold-toggle .fold-chevron,
+#staff-panel button.fold-toggle .fold-chevron,
+#calendar-panel button.fold-toggle .fold-chevron {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+}
 #carry-flags:not(:empty) {
   color: #4a121c;
   background: #fff;
