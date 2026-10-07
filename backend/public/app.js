@@ -35,6 +35,7 @@ function columnClasses(column, index, size) {
   const classes = [`page-${String(column.page || 'left').toLowerCase()}`];
   if (column.key === 'line_number' || column.key === 'line_repeat') classes.push('col-no');
   else if (column.key === 'date' || column.key === 'in_or_out' || column.key === 'initials') classes.push('col-identity');
+  if (column.kind === 'GRAND') classes.push('col-grand');
   if (column.kind === 'SUBTOTAL' || column.kind === 'GRAND') classes.push('col-total');
   if (index === 0) classes.push('group-start');
   if (index === size - 1) classes.push('group-end');

@@ -20,6 +20,10 @@ function synchronizeHorizontalMatrixLayout() {
   // STEP 2: AUTO-FITTING VALUES (As cell value increases, font size decreases dynamically)
   const activeValueCells = document.querySelectorAll('.dynamic-fit-value');
   activeValueCells.forEach(cell => {
+    if (cell.classList.contains('col-grand')) {
+      cell.style.fontSize = '14px';
+      return;
+    }
     const cashStringLength = cell.textContent.trim().length;
     // e.g., "K1,656,515.00"
     let optimalFontSize = 14;

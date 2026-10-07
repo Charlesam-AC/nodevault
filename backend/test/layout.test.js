@@ -57,9 +57,10 @@ test('kwacha layout is notes, re-issuable, coins, and grand total, with no old c
   assert.equal(getLayout('KWACHA_TREASURY').formula, 'Grand Total = Total Re-Issuable + Total Coins');
   const spread = spreadHeaders('KWACHA_TREASURY');
   assert.equal(spread[0], 'No.');
-  assert.equal(spread.at(-1), 'No.');
+  assert.equal(spread.at(-1), 'Grand Total');
+  assert.equal(spread.filter((header) => header === 'No.').length, 1);
   assert.ok(spread.includes('In or Out'));
   assert.ok(spread.includes('Initials'));
-  assert.equal(spreadHeaders('BANCS_TREASURY').at(-1), 'No.');
-  assert.equal(spreadHeaders('FOREIGN_CURRENCY').at(-1), 'No.');
+  assert.equal(spreadHeaders('BANCS_TREASURY').at(-1), 'TOTAL ZAR');
+  assert.equal(spreadHeaders('FOREIGN_CURRENCY').at(-1), 'TOTAL ZAR');
 });

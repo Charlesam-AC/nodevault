@@ -554,6 +554,8 @@ tr[data-label="Bal c/d"] td.dynamic-fit-value { font-weight: 600; }
 .group-start { border-left: 2px solid var(--ledger-rule-group); }
 .group-end,
 .col-total { border-right: 2px solid var(--ledger-rule-group); }
+.ledger-table th.col-grand,
+.ledger-table td.col-grand { min-width: 9.25rem; }
 .col-no,
 .col-identity { text-align: center; }
 .col-no {

@@ -219,7 +219,6 @@ function publicLayout(bookClass) {
       symbol: column.symbol,
     });
   }
-  push('RIGHT', 'LINE_REPEAT', '', { header: 'No.', key: 'line_repeat' });
   return {
     book_class: bookClass,
     title: layout.title,
