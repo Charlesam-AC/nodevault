@@ -369,6 +369,7 @@ test('the master admin can add, assign, and remove staff, and the auditor can re
   });
   assert.equal(roster.status, 200);
   assert.equal(roster.body.can_manage, false);
+  assert.equal(roster.body.branches[0].branch_id, desk.branchId);
   assert.equal(roster.body.users.some((user) => user.work_email === 'spare.teller@demo-bank.example' && user.is_active === false), true);
   assert.equal(
     roster.body.users.some((user) => user.user_id === relief.body.user_id && user.assignments.some((item) => item.coverage === 'current' || item.coverage === 'recent' || item.coverage === 'upcoming')),

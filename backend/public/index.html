@@ -136,9 +136,6 @@
       <section id="staff-panel" hidden class="mb-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm" aria-label="Staff register">
         <h3 class="text-base font-semibold text-gray-900">Staff register</h3>
         <p id="staff-copy" class="mt-1 text-sm text-gray-600"></p>
-        <p id="staff-note" class="staff-note" role="status"></p>
-        <p id="staff-error" class="error" role="alert"></p>
-        <div id="staff-list"></div>
         <form id="staff-add" hidden>
           <h4 class="staff-span">Add a person</h4>
           <label>Full name
@@ -171,6 +168,9 @@
             <button type="submit" id="staff-add-submit">Add to the register</button>
           </div>
         </form>
+        <p id="staff-note" class="staff-note" role="status"></p>
+        <p id="staff-error" class="error" role="alert"></p>
+        <div id="staff-list"></div>
         <form id="staff-edit" hidden>
           <h4 class="staff-span" id="staff-edit-title">Change role or branch</h4>
           <input id="staff-edit-user" type="hidden">

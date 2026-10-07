@@ -212,6 +212,21 @@ async function listStaff(db, actor, now = new Date()) {
       [actor.tenantId, windowStart],
     ),
   ]);
+  const homeBranchId = actor.branchId === null || actor.branchId === undefined
+    ? null
+    : Number(actor.branchId);
+  const branchRows = branches.rows.map((row) => ({
+    branch_id: Number(row.branch_id),
+    branch_code: row.branch_code,
+    branch_name: row.branch_name,
+  }));
+  branchRows.sort((left, right) => {
+    if (homeBranchId !== null) {
+      if (left.branch_id === homeBranchId) return -1;
+      if (right.branch_id === homeBranchId) return 1;
+    }
+    return String(left.branch_code).localeCompare(String(right.branch_code));
+  });
   const byUser = new Map();
   for (const row of assignments.rows) {
     const spec = POSTS.find((post) => post.code === row.post_code);
@@ -234,11 +249,8 @@ async function listStaff(db, actor, now = new Date()) {
   return {
     can_manage: canManage(actor),
     today,
-    branches: branches.rows.map((row) => ({
-      branch_id: Number(row.branch_id),
-      branch_code: row.branch_code,
-      branch_name: row.branch_name,
-    })),
+    home_branch_id: homeBranchId,
+    branches: branchRows,
     roles: ROLES.map((role) => ({ code: role.code, label: role.label, pin: role.pin })),
     posts: POSTS.map((post) => ({ code: post.code, label: post.label, role: post.role })),
     users: users.rows.map((row) => ({

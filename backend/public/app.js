@@ -755,7 +755,11 @@ function fillStaffChoices() {
   const roles = (state.staff?.roles || []).map((role) => ({ value: role.code, label: role.label }));
   const branches = staffBranchOptions();
   fillSelect(document.getElementById('staff-role'), roles);
-  fillSelect(document.getElementById('staff-branch'), branches);
+  fillSelect(
+    document.getElementById('staff-branch'),
+    branches,
+    state.staff?.home_branch_id ? String(state.staff.home_branch_id) : '',
+  );
   fillSelect(document.getElementById('staff-edit-role'), roles);
   fillSelect(document.getElementById('staff-edit-branch'), branches);
   fillSelect(document.getElementById('staff-assign-branch'), branches);
