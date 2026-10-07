@@ -5,6 +5,8 @@ const state = {
   books: [],
   book: null,
   directory: [],
+  businessDate: '',
+  dates: [],
 };
 
 const loginView = document.getElementById('login-view');
@@ -187,6 +189,7 @@ async function openBook(bookId) {
     document.getElementById('open-close').disabled = view.book.status !== 'OPEN' || !view.position || view.position.error;
     renderSpread(view);
     renderPosition(view);
+    renderEntry(view);
     for (const button of document.querySelectorAll('#book-tabs button')) {
       button.setAttribute('aria-selected', button.dataset.bookId === String(bookId) ? 'true' : 'false');
     }
@@ -654,10 +657,132 @@ function renderActAs() {
   if (current && [...select.options].some((option) => option.value === current)) select.value = current;
 }
 
-async function enterDesk() {
+function canPostEntries() {
+  const role = state.me?.system_role;
+  if (role === 'VAULT_CUSTODIAN' || role === 'HEAD_TELLER_COORDINATOR') return true;
+  if (role === 'IT_SUPER_ADMIN' && (state.me.break_glass || state.me.can_act_as)) return true;
+  return false;
+}
+
+function prettyDate(iso) {
+  const [year, month, day] = iso.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+function renderBookDate() {
+  const select = document.getElementById('book-date');
+  select.replaceChildren();
+  for (const item of state.dates) {
+    const option = document.createElement('option');
+    option.value = item.business_date;
+    const stamp = item.status === 'OPEN' ? 'open' : 'closed';
+    option.textContent = `${prettyDate(item.business_date)} · ${stamp}`;
+    select.appendChild(option);
+  }
+  if (state.businessDate) select.value = state.businessDate;
+}
+
+function rosterInitials() {
+  const custodians = state.directory.filter((user) => user.system_role === 'VAULT_CUSTODIAN');
+  const coord = state.directory.find((user) => user.system_role === 'HEAD_TELLER_COORDINATOR');
+  return {
+    c1: custodians[0]?.two_letter_initials || '',
+    c2: custodians[1]?.two_letter_initials || '',
+    coord: coord?.two_letter_initials || '',
+  };
+}
+
+function renderEntry(view) {
+  const panel = document.getElementById('entry-panel');
+  const form = document.getElementById('entry-form');
+  const note = document.getElementById('entry-note');
+  const error = document.getElementById('entry-error');
+  error.textContent = '';
+  if (!view) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  const open = view.book.status === 'OPEN';
+  const allowed = canPostEntries();
+  if (!open) {
+    form.hidden = true;
+    note.textContent = 'This book is closed. Choose the open date to write a line.';
+    return;
+  }
+  if (!allowed) {
+    form.hidden = true;
+    note.textContent = 'This role cannot write a line. Sign in as the master admin, or open the desk as a vault custodian or the weekly head teller.';
+    return;
+  }
+  form.hidden = false;
+  note.textContent = view.square_required
+    ? 'Amounts, not pieces. Post the line, then write Bal c/d so the sheet squares.'
+    : 'Amounts, not pieces. The line is appended to this open book.';
+  document.getElementById('entry-square').hidden = !view.square_required;
+  const initials = rosterInitials();
+  document.getElementById('entry-c1').value = initials.c1;
+  document.getElementById('entry-c2').value = initials.c2;
+  document.getElementById('entry-coord').value = initials.coord;
+  const host = document.getElementById('entry-amounts');
+  host.replaceChildren();
+  for (const group of view.layout.groups) {
+    const denoms = group.columns.filter((column) => column.kind === 'DENOMINATION');
+    if (!denoms.length) continue;
+    const block = document.createElement('div');
+    block.className = 'entry-group';
+    const title = document.createElement('h4');
+    title.textContent = group.label || 'Denominations';
+    const grid = document.createElement('div');
+    grid.className = 'entry-amounts-grid';
+    for (const column of denoms) {
+      const input = document.createElement('input');
+      input.inputMode = 'decimal';
+      input.autocomplete = 'off';
+      input.placeholder = '0.00';
+      input.dataset.channel = column.channel;
+      input.dataset.code = column.code;
+      input.setAttribute('aria-label', `${group.label} ${column.header}`);
+      const label = document.createElement('label');
+      label.append(document.createTextNode(column.header), input);
+      grid.appendChild(label);
+    }
+    block.append(title, grid);
+    host.appendChild(block);
+  }
+}
+
+function entryPayload() {
+  const amounts = {};
+  for (const input of document.querySelectorAll('#entry-amounts input')) {
+    const raw = input.value.trim();
+    if (!raw || raw === '0' || raw === '0.00') continue;
+    if (!amounts[input.dataset.channel]) amounts[input.dataset.channel] = {};
+    amounts[input.dataset.channel][input.dataset.code] = raw;
+  }
+  return {
+    flow_direction: document.getElementById('entry-flow').value,
+    accounting_label: document.getElementById('entry-label').value.trim(),
+    custodian_one_initials: document.getElementById('entry-c1').value.trim(),
+    custodian_two_initials: document.getElementById('entry-c2').value.trim(),
+    teller_coord_initials: document.getElementById('entry-coord').value.trim(),
+    amounts,
+  };
+}
+
+async function enterDesk(date) {
+  const keepClass = state.book?.book?.book_class;
   state.me = await api('/api/me');
-  const desk = await api('/api/books');
+  const query = date ? `?date=${encodeURIComponent(date)}` : '';
+  const desk = await api(`/api/books${query}`);
   state.books = desk.books;
+  state.businessDate = desk.businessDate || '';
+  state.dates = desk.dates || [];
   state.rotation = desk.rotation;
   state.directory = (await api('/api/directory')).users;
   loginView.hidden = true;
@@ -686,11 +811,16 @@ async function enterDesk() {
     return;
   }
   renderTabs();
+  renderBookDate();
   renderSignoff();
-  if (state.books[0]) await openBook(state.books[0].book_id);
-  else document.getElementById('desk-status').textContent = desk.businessDate
-    ? `No treasury book is open for ${desk.businessDate}.`
-    : 'No treasury book has been opened yet.';
+  const next = state.books.find((book) => book.book_class === keepClass) || state.books[0];
+  if (next) await openBook(next.book_id);
+  else {
+    renderEntry(null);
+    document.getElementById('desk-status').textContent = desk.businessDate
+      ? `No treasury book is open for ${desk.businessDate}.`
+      : 'No treasury book has been opened yet.';
+  }
 }
 
 function showLogin() {
@@ -771,6 +901,56 @@ document.getElementById('login-form').addEventListener('submit', async (event) =
 });
 
 document.getElementById('sign-out').addEventListener('click', showLogin);
+
+document.getElementById('book-date').addEventListener('change', () => {
+  enterDesk(document.getElementById('book-date').value).catch((error) => {
+    document.getElementById('desk-status').textContent = error.message;
+  });
+});
+
+document.getElementById('entry-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const error = document.getElementById('entry-error');
+  const button = document.getElementById('entry-submit');
+  error.textContent = '';
+  const payload = entryPayload();
+  if (!Object.keys(payload.amounts).length) {
+    error.textContent = 'Enter an amount on at least one denomination.';
+    return;
+  }
+  button.disabled = true;
+  try {
+    const result = await api(`/api/books/${state.book.book.book_id}/entries`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    await openBook(state.book.book.book_id);
+    document.getElementById('desk-status').textContent = `Line ${result.lineNumber} is on the sheet.`;
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.getElementById('entry-square').addEventListener('click', async () => {
+  const error = document.getElementById('entry-error');
+  const button = document.getElementById('entry-square');
+  error.textContent = '';
+  button.disabled = true;
+  try {
+    const result = await api(`/api/books/${state.book.book.book_id}/square`, {
+      method: 'POST',
+      body: JSON.stringify(entryPayload()),
+    });
+    await openBook(state.book.book.book_id);
+    document.getElementById('desk-status').textContent = `Bal c/d is line ${result.lineNumber}. The sheet squares.`;
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+});
 
 document.getElementById('open-close').addEventListener('click', () => {
   const users = state.directory;

@@ -70,4 +70,21 @@ async function listBooks(db, tenantId, businessDate = null) {
   return result.rows;
 }
 
-module.exports = { BOOK_ORDER, createBookWithRows, listBooks };
+async function listBookDates(db, tenantId, branchId) {
+  const result = await db.query(
+    `SELECT business_date::text AS business_date,
+            CASE
+              WHEN bool_and(status = 'OPEN') THEN 'OPEN'
+              WHEN bool_and(status = 'BALANCED_CLOSED') THEN 'BALANCED_CLOSED'
+              ELSE 'MIXED'
+            END AS status
+     FROM branch_vault_books
+     WHERE tenant_id = $1 AND branch_id = $2
+     GROUP BY business_date
+     ORDER BY business_date DESC`,
+    [tenantId, branchId],
+  );
+  return result.rows;
+}
+
+module.exports = { BOOK_ORDER, createBookWithRows, listBooks, listBookDates };

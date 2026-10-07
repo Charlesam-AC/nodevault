@@ -74,7 +74,9 @@ p { margin: 0; }
 }
 main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
 
-.desk-bar { display: flex; gap: 1.5rem; align-items: flex-start; }
+.desk-bar { display: flex; gap: 1.5rem; align-items: flex-end; flex-wrap: wrap; }
+.book-date { color: #f7fbfb; font-size: 0.82rem; margin: 0; }
+.book-date select { width: auto; min-width: 14rem; background: white; color: var(--ink); }
 .login-screen {
   width: min(100%, 70rem);
   margin: auto;
@@ -670,6 +672,48 @@ footer { padding: 1.5rem 1.25rem 2rem; color: rgba(247, 251, 251, 0.82); font-si
 .act-as button { margin: 0; }
 .acting-banner { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
 .acting-banner button { margin: 0; background: var(--mast); color: white; border: 1px solid var(--mast); padding: 0.4rem 0.75rem; }
+.entry-panel {
+  background: white;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  padding: 0.95rem 1rem 1rem;
+  margin-top: 1rem;
+}
+.entry-panel h3 { margin: 0; font-size: 1.05rem; }
+.entry-panel .hint { color: var(--ink-soft); }
+.entry-meta {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+.entry-group { margin-top: 0.85rem; }
+.entry-group h4 {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1c6e90;
+}
+.entry-amounts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  gap: 0.45rem 0.6rem;
+}
+.entry-amounts-grid label { margin-top: 0; }
+.entry-amounts-grid input {
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+.entry-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.entry-actions button { margin-top: 0.85rem; }
+#entry-square {
+  background: transparent;
+  color: var(--mast);
+  border: 1px solid var(--mast);
+  padding: 0.65rem 0.9rem;
+}
 
 @media (min-width: 1800px) {
   main { max-width: min(2400px, calc(100% - 2.5rem)); }
@@ -686,6 +730,7 @@ footer { padding: 1.5rem 1.25rem 2rem; color: rgba(247, 251, 251, 0.82); font-si
   #carry-flags,
   .desk-bar,
   .sheet-toolbar,
+  .entry-panel,
   .chips,
   .status,
   .formula,
@@ -714,7 +759,8 @@ footer { padding: 1.5rem 1.25rem 2rem; color: rgba(247, 251, 251, 0.82); font-si
 }
 
 @media (max-width: 860px) {
-  .desk-bar, .mast, .signoff, .pin-grid, .entra-admin { flex-direction: column; display: flex; }
+  .desk-bar, .mast, .signoff, .pin-grid, .entra-admin, .entry-meta { flex-direction: column; display: flex; }
+  .entry-meta { display: grid; grid-template-columns: 1fr; }
   .signoff, .pin-grid, .rotation, .handover-post, .calendar-list, .calendar-forms { display: grid; grid-template-columns: 1fr; }
   .mast-meta { text-align: left; }
   .login-screen { width: min(100% - 1.25rem, 40rem); grid-template-columns: 1fr; gap: 1.75rem; padding-top: 1.25rem; }

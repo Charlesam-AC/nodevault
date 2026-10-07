@@ -88,22 +88,27 @@ function mapFromCells(cells) {
   return map;
 }
 
-function rollForward(rows) {
+function cellsFromMap(bookClass, map) {
+  const layout = getLayout(bookClass);
+  return layout.columns.map((column) => ({
+    ...column,
+    amountMinor: map[cellKey(column.channel, column.code, column.kind)] || 0n,
+  }));
+}
+
+function runningPosition(rows) {
   let position = null;
-  let lastBalance = null;
   for (const row of rows) {
     const snapshot = mapFromCells(row.cells);
     if (row.flowDirection === 'BAL') {
-      if (position === null) {
-        position = snapshot;
-      } else if (!sameMap(position, snapshot)) {
+      if (position !== null && !sameMap(position, snapshot)) {
         throw new VaultError(
           'BOOK_OUT_OF_BALANCE',
           'A balance row does not match the running denomination position',
           409,
         );
       }
-      lastBalance = snapshot;
+      position = snapshot;
     } else if (row.flowDirection === 'IN' || row.flowDirection === 'OUT') {
       if (position === null) {
         throw new VaultError('BOOK_OUT_OF_BALANCE', 'Movements cannot precede the opening balance', 409);
@@ -123,7 +128,16 @@ function rollForward(rows) {
       throw new VaultError('INVALID_FLOW', 'Flow must be IN, OUT, or BAL');
     }
   }
-  if (!lastBalance || !sameMap(position, lastBalance)) {
+  if (position === null) {
+    throw new VaultError('BOOK_OUT_OF_BALANCE', 'The book has no opening balance', 409);
+  }
+  return position;
+}
+
+function rollForward(rows) {
+  const position = runningPosition(rows);
+  const lastBalance = [...rows].reverse().find((row) => row.flowDirection === 'BAL');
+  if (!lastBalance || !sameMap(position, mapFromCells(lastBalance.cells))) {
     throw new VaultError(
       'BOOK_OUT_OF_BALANCE',
       'The carried-down row is not the current position',
@@ -228,6 +242,8 @@ async function insertLedgerRow(db, {
       custodianTwoInitials,
       tellerCoordInitials,
     });
+    const existing = await loadRows(client, bookId);
+    runningPosition([...existing, { flowDirection, cells }]);
     const line = await client.query(
       `SELECT COALESCE(MAX(line_number), 0) + 1 AS next_line
        FROM vault_denomination_matrix_ledger
@@ -372,11 +388,11 @@ async function getBookView(db, tenantId, bookId) {
   const record = book.rows[0];
   const rows = await loadRows(db, bookId);
   let position = null;
+  let squareRequired = false;
   if (rows.length) {
     try {
-      rollForward(rows);
-      const closing = [...rows].reverse().find((row) => row.flowDirection === 'BAL');
-      const minors = positionByCurrency(record.book_class, closing.cells);
+      const map = runningPosition(rows);
+      const minors = positionByCurrency(record.book_class, cellsFromMap(record.book_class, map));
       position = {};
       for (const [currency, minor] of Object.entries(minors)) {
         const symbol = currency === 'ZMW' ? 'K'
@@ -390,6 +406,11 @@ async function getBookView(db, tenantId, bookId) {
           display: formatMoney(minor, symbol),
         };
       }
+      const last = rows[rows.length - 1];
+      const squared = last.flowDirection === 'BAL'
+        && last.accountingLabel === 'Bal c/d'
+        && sameMap(map, mapFromCells(last.cells));
+      squareRequired = !squared;
     } catch (error) {
       if (!(error instanceof VaultError)) throw error;
       position = { error: error.message };
@@ -400,7 +421,78 @@ async function getBookView(db, tenantId, bookId) {
     layout: publicLayout(record.book_class),
     rows: presentRows(record.book_class, rows),
     position,
+    square_required: squareRequired,
   };
+}
+
+async function writeCarriedDown(db, {
+  tenantId,
+  bookId,
+  custodianOneInitials,
+  custodianTwoInitials,
+  tellerCoordInitials,
+}) {
+  const owns = typeof db.connect === 'function' && !db.release;
+  const client = owns ? await db.connect() : db;
+  try {
+    if (owns) await client.query('BEGIN');
+    const book = await client.query(
+      `SELECT book_id, branch_id, book_class, status, business_date::text AS business_date
+       FROM branch_vault_books
+       WHERE book_id = $1 AND tenant_id = $2
+       FOR UPDATE`,
+      [bookId, tenantId],
+    );
+    if (book.rowCount !== 1) {
+      throw new VaultError('BOOK_NOT_FOUND', 'Treasury book not found', 404);
+    }
+    const record = book.rows[0];
+    if (record.status !== 'OPEN') {
+      throw new VaultError('BOOK_CLOSED', 'Closed books reject new rows', 409);
+    }
+    const rows = await loadRows(client, bookId);
+    const map = runningPosition(rows);
+    const last = rows[rows.length - 1];
+    if (
+      last
+      && last.flowDirection === 'BAL'
+      && last.accountingLabel === 'Bal c/d'
+      && sameMap(map, mapFromCells(last.cells))
+    ) {
+      throw new VaultError('ALREADY_SQUARE', 'The carried-down row already matches the book', 409);
+    }
+    const created = await insertLedgerRow(client, {
+      tenantId,
+      bookId,
+      transactionDate: record.business_date,
+      custodianOneInitials,
+      custodianTwoInitials,
+      tellerCoordInitials,
+      accountingLabel: 'Bal c/d',
+      flowDirection: 'BAL',
+      amounts: amountsFromCells(cellsFromMap(record.book_class, map)),
+    }, { manageTransaction: false });
+    const minors = positionByCurrency(record.book_class, cellsFromMap(record.book_class, map));
+    for (const [currency, minor] of Object.entries(minors)) {
+      await client.query(
+        `INSERT INTO mock_core_positions
+           (tenant_id, branch_id, book_id, currency_code, amount_minor)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (tenant_id, branch_id, book_id, currency_code)
+         DO UPDATE SET amount_minor = EXCLUDED.amount_minor`,
+        [tenantId, record.branch_id, bookId, currency, minor.toString()],
+      );
+    }
+    if (owns) await client.query('COMMIT');
+    return created;
+  } catch (error) {
+    if (owns) {
+      try { await client.query('ROLLBACK'); } catch (_rollbackError) { /* already aborted */ }
+    }
+    throw error;
+  } finally {
+    if (owns) client.release();
+  }
 }
 
 module.exports = {
@@ -408,6 +500,8 @@ module.exports = {
   composeRow,
   displayFor,
   rollForward,
+  runningPosition,
+  cellsFromMap,
   positionByCurrency,
   parsePosition,
   amountsFromCells,
@@ -415,6 +509,7 @@ module.exports = {
   loadRows,
   presentRows,
   getBookView,
+  writeCarriedDown,
   translateLedgerError,
   inOrOut,
   initialsOf,

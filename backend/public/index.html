@@ -108,7 +108,7 @@
       <section id="act-as" class="act-as" hidden>
         <div>
           <h3>Test as a staff member</h3>
-          <p>Open the desk with that person's role. The books, the close, and the calendar follow their access.</p>
+          <p>Open the desk with that person's role. A vault custodian or the weekly head teller writes lines on the open book.</p>
         </div>
         <label>Staff member
           <select id="act-as-user"></select>
@@ -129,6 +129,9 @@
       <p id="carry-flags" class="error"></p>
       <div id="ledger-panel">
       <div class="desk-bar">
+        <label class="book-date">Book date
+          <select id="book-date" aria-label="Book date"></select>
+        </label>
         <div id="book-tabs" class="book-tabs" role="tablist" aria-label="Treasury books"></div>
         <button type="button" id="open-close" disabled>Three-person close</button>
       </div>
@@ -150,6 +153,40 @@
           </div>
         </div>
       </div>
+      <section id="entry-panel" class="entry-panel" hidden>
+        <div class="entry-head">
+          <h3>Write a line</h3>
+          <p id="entry-note" class="hint"></p>
+        </div>
+        <form id="entry-form">
+          <div class="entry-meta">
+            <label>In or out
+              <select id="entry-flow">
+                <option value="IN">In</option>
+                <option value="OUT">Out</option>
+              </select>
+            </label>
+            <label>Reference
+              <input id="entry-label" maxlength="32" required value="CIT_IN" autocomplete="off">
+            </label>
+            <label>Custodian 1
+              <input id="entry-c1" maxlength="8" required autocomplete="off">
+            </label>
+            <label>Custodian 2
+              <input id="entry-c2" maxlength="8" required autocomplete="off">
+            </label>
+            <label>Head teller
+              <input id="entry-coord" maxlength="8" required autocomplete="off">
+            </label>
+          </div>
+          <div id="entry-amounts"></div>
+          <p id="entry-error" class="error" role="alert"></p>
+          <div class="entry-actions">
+            <button type="submit" id="entry-submit">Post the line</button>
+            <button type="button" id="entry-square">Write Bal c/d</button>
+          </div>
+        </form>
+      </section>
       <section id="signoff" class="signoff" aria-label="Closing sign-off"></section>
       </div>
     </section>

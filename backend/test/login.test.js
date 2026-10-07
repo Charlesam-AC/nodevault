@@ -338,6 +338,119 @@ test('a frozen IT super admin cannot use a correct directory password', async ()
   assert.equal(result.body.error, 'ADMIN_FROZEN');
 });
 
+test('the master admin and an acting custodian can post a line on the open book', async () => {
+  const { applicationPool } = pools();
+  const desk = await createDesk(pinHash);
+  process.env.SEED_DEMO_DATA = 'true';
+  process.env.MASTER_ADMIN_EMAIL = 'admin@demo-bank.example';
+  process.env.MASTER_ADMIN_PASSWORD = 'NodeVault-admin-2026';
+  process.env.DEMO_CLOSING_PIN = '135790';
+  const { ensureMasterAdmin } = require('../services/seed');
+  const { ensureWorkingBooks } = require('../services/workingBooks');
+  await ensureMasterAdmin(applicationPool);
+  await setPassword(CUSTODIAN);
+  await setPassword('teller.desk@demo-bank.example');
+  await applicationPool.query(
+    `UPDATE branch_vault_books
+     SET status = 'BALANCED_CLOSED', closed_at = now()
+     WHERE branch_id = $1`,
+    [desk.branchId],
+  );
+  const opened = await ensureWorkingBooks(applicationPool, new Date('2026-10-07T10:00:00.000Z'));
+  assert.equal(opened.ensured, true);
+  const again = await ensureWorkingBooks(applicationPool, new Date('2026-10-07T10:00:00.000Z'));
+  assert.ok(again.results[0].opened.every((item) => item.status === 'ALREADY'));
+
+  const master = await postPassword(applicationPool, {
+    email: 'admin@demo-bank.example',
+    password: 'NodeVault-admin-2026',
+  });
+  const working = await applicationPool.query(
+    `SELECT book_id FROM branch_vault_books
+     WHERE branch_id = $1 AND book_class = 'KWACHA_TREASURY' AND business_date = '2026-10-07'`,
+    [desk.branchId],
+  );
+  const bookId = working.rows[0].book_id;
+  const line = {
+    custodian_one_initials: 'C.A.',
+    custodian_two_initials: 'J.P.',
+    teller_coord_initials: 'M.K.',
+    accounting_label: 'CIT_IN',
+    flow_direction: 'IN',
+    amounts: { REISSUABLE: { K100: '100.00' } },
+  };
+  const posted = await request(applicationPool, {
+    method: 'POST',
+    path: `/api/books/${bookId}/entries`,
+    token: master.body.token,
+    body: line,
+  });
+  assert.equal(posted.status, 201);
+
+  const teller = await postPassword(applicationPool, {
+    email: 'teller.desk@demo-bank.example',
+    password: PASSWORD,
+  });
+  const refused = await request(applicationPool, {
+    method: 'POST',
+    path: `/api/books/${bookId}/entries`,
+    token: teller.body.token,
+    body: line,
+  });
+  assert.equal(refused.status, 403);
+  assert.equal(refused.body.error, 'WRONG_ROLE');
+
+  const closed = await request(applicationPool, {
+    method: 'POST',
+    path: `/api/books/${desk.books.KWACHA_TREASURY}/entries`,
+    token: master.body.token,
+    body: line,
+  });
+  assert.equal(closed.status, 409);
+  assert.equal(closed.body.error, 'BOOK_CLOSED');
+
+  const acting = await request(applicationPool, {
+    method: 'POST',
+    path: '/api/auth/act-as',
+    token: master.body.token,
+    body: { user_id: desk.users.c1.user_id },
+  });
+  const second = await request(applicationPool, {
+    method: 'POST',
+    path: `/api/books/${bookId}/entries`,
+    token: acting.body.token,
+    body: { ...line, accounting_label: 'CIT_OUT', flow_direction: 'OUT', amounts: { REISSUABLE: { K100: '50.00' } } },
+  });
+  assert.equal(second.status, 201);
+
+  const openView = await request(applicationPool, {
+    path: `/api/books/${bookId}`,
+    token: acting.body.token,
+  });
+  assert.equal(openView.body.square_required, true);
+  assert.equal(openView.body.position.ZMW.display, 'K1,656,565.00');
+  assert.ok(openView.body.rows.some((row) => row.accounting_label === 'CIT_IN' && row.in_or_out === 'In'));
+
+  const squared = await request(applicationPool, {
+    method: 'POST',
+    path: `/api/books/${bookId}/square`,
+    token: acting.body.token,
+    body: line,
+  });
+  assert.equal(squared.status, 201);
+  const balanced = await request(applicationPool, {
+    path: `/api/books/${bookId}`,
+    token: master.body.token,
+  });
+  assert.equal(balanced.body.square_required, false);
+  assert.equal(balanced.body.rows.at(-1).accounting_label, 'Bal c/d');
+  assert.equal(balanced.body.position.ZMW.display, 'K1,656,565.00');
+
+  const deskView = await request(applicationPool, { path: '/api/books', token: master.body.token });
+  assert.equal(deskView.body.businessDate, '2026-10-07');
+  assert.ok(deskView.body.dates.some((item) => item.business_date === '2026-10-03' && item.status === 'BALANCED_CLOSED'));
+});
+
 test('password sign-in keeps the corporate domain restriction', async () => {
   const { applicationPool } = pools();
   await createDesk(pinHash);

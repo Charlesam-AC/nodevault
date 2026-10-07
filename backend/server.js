@@ -6,7 +6,8 @@ const { createPool, waitForDb } = require('./db');
 const { VaultError } = require('./services/errors');
 const { syncCatalogue } = require('./services/catalogue');
 const { seedDemo, ensureMasterAdmin } = require('./services/seed');
-const { listBooks } = require('./services/books');
+const { ensureWorkingBooks } = require('./services/workingBooks');
+const { listBooks, listBookDates } = require('./services/books');
 const { businessMorning, isBusinessDay, zonedParts } = require('./services/calendar');
 const { carryForwardBranch, listCarryFlags } = require('./services/carry');
 const {
@@ -18,7 +19,8 @@ const {
   cancelGazetted,
 } = require('./services/closures');
 const { holdersForDate, rotationView, captureHandover } = require('./services/rotation');
-const { getBookView, insertLedgerRow } = require('./services/ledger');
+const { getBookView, insertLedgerRow, writeCarriedDown } = require('./services/ledger');
+const { recordAudit } = require('./services/audit');
 const { executeThreePersonVaultLock, dispatchClosing } = require('./services/closing');
 const { openBreakGlass } = require('./services/breakglass');
 const { readEntraEnabled, setEntraEnabled } = require('./services/entraToggle');
@@ -56,6 +58,38 @@ function asyncRoute(handler) {
   return (req, res, next) => {
     Promise.resolve(handler(req, res, next)).catch(next);
   };
+}
+
+function deskCanPost(user) {
+  if (user.role === 'VAULT_CUSTODIAN' || user.role === 'HEAD_TELLER_COORDINATOR') return true;
+  if (user.role === 'IT_SUPER_ADMIN' && user.breakGlassId) return true;
+  return isMasterAdmin({ work_email: user.email }) && !user.actorUserId;
+}
+
+function entrySignatories(body) {
+  const label = String(body.accounting_label || '').trim();
+  if (!label || label.length > 32) {
+    throw new VaultError('INVALID_LABEL', 'A reference of up to 32 characters is required');
+  }
+  return {
+    custodianOneInitials: body.custodian_one_initials,
+    custodianTwoInitials: body.custodian_two_initials,
+    tellerCoordInitials: body.teller_coord_initials,
+    accountingLabel: label,
+  };
+}
+
+function movementHasAmount(amounts) {
+  if (!amounts || typeof amounts !== 'object' || Array.isArray(amounts)) return false;
+  for (const channel of Object.values(amounts)) {
+    if (!channel || typeof channel !== 'object') continue;
+    for (const value of Object.values(channel)) {
+      if (value !== undefined && value !== null && String(value).trim() !== '' && String(value) !== '0' && String(value) !== '0.00') {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function buildApp(db) {
@@ -173,7 +207,7 @@ function buildApp(db) {
   }));
 
   app.get('/api/books', guard, asyncRoute(async (req, res) => {
-    res.json(await prepareDesk(db, req.user));
+    res.json(await prepareDesk(db, req.user, new Date(), req.query.date || null));
   }));
 
   app.get('/api/rotation', guard, asyncRoute(async (req, res) => {
@@ -219,21 +253,65 @@ function buildApp(db) {
   }));
 
   app.post('/api/books/:bookId/entries', guard, asyncRoute(async (req, res) => {
-    const allowed = new Set(['VAULT_CUSTODIAN', 'HEAD_TELLER_COORDINATOR']);
-    const maintenance = req.user.role === 'IT_SUPER_ADMIN' && req.user.breakGlassId;
-    if (!allowed.has(req.user.role) && !maintenance) {
+    if (!deskCanPost(req.user)) {
       throw new VaultError('WRONG_ROLE', 'This desk cannot add ledger rows', 403);
     }
+    if (!movementHasAmount(req.body.amounts)) {
+      throw new VaultError('INVALID_AMOUNT', 'Enter an amount on at least one denomination');
+    }
+    const book = await db.query(
+      `SELECT business_date::text AS business_date
+       FROM branch_vault_books
+       WHERE book_id = $1 AND tenant_id = $2`,
+      [req.params.bookId, req.user.tenantId],
+    );
+    if (book.rowCount !== 1) throw new VaultError('BOOK_NOT_FOUND', 'Treasury book not found', 404);
+    const signatories = entrySignatories(req.body);
     const created = await insertLedgerRow(db, {
       tenantId: req.user.tenantId,
       bookId: req.params.bookId,
-      transactionDate: req.body.transaction_date,
-      custodianOneInitials: req.body.custodian_one_initials,
-      custodianTwoInitials: req.body.custodian_two_initials,
-      tellerCoordInitials: req.body.teller_coord_initials,
-      accountingLabel: req.body.accounting_label,
+      transactionDate: book.rows[0].business_date,
+      ...signatories,
       flowDirection: req.body.flow_direction,
       amounts: req.body.amounts,
+    });
+    await recordAudit(db, {
+      tenantId: req.user.tenantId,
+      bookId: req.params.bookId,
+      eventType: 'LEDGER_LINE_POSTED',
+      actorUserIds: [req.user.userId],
+      detail: {
+        actor_user_id: req.user.actorUserId || null,
+        line_number: created.lineNumber,
+        flow_direction: req.body.flow_direction,
+        accounting_label: signatories.accountingLabel,
+      },
+    });
+    res.status(201).json(created);
+  }));
+
+  app.post('/api/books/:bookId/square', guard, asyncRoute(async (req, res) => {
+    if (!deskCanPost(req.user)) {
+      throw new VaultError('WRONG_ROLE', 'This desk cannot add ledger rows', 403);
+    }
+    const signatories = entrySignatories({
+      ...req.body,
+      accounting_label: 'Bal c/d',
+    });
+    const created = await writeCarriedDown(db, {
+      tenantId: req.user.tenantId,
+      bookId: req.params.bookId,
+      ...signatories,
+    });
+    await recordAudit(db, {
+      tenantId: req.user.tenantId,
+      bookId: req.params.bookId,
+      eventType: 'LEDGER_SQUARED',
+      actorUserIds: [req.user.userId],
+      detail: {
+        actor_user_id: req.user.actorUserId || null,
+        line_number: created.lineNumber,
+      },
     });
     res.status(201).json(created);
   }));
@@ -308,19 +386,22 @@ async function latestBookDate(db, tenantId, branchId) {
   return result.rows[0] ? result.rows[0].business_date : null;
 }
 
-async function prepareDesk(db, user, now = new Date()) {
+async function prepareDesk(db, user, now = new Date(), requestedDate = null) {
   const tenantId = user.tenantId;
   const branchId = user.branchId;
   if (!branchId) throw new VaultError('NO_BRANCH', 'This profile is not attached to a branch', 409);
+  if (requestedDate && !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+    throw new VaultError('WRONG_DATE', 'Book date must be YYYY-MM-DD');
+  }
   const options = await optionsForBranch(db, tenantId, branchId, { now });
   const morning = businessMorning(now, options);
   const gate = morning
     ? await holdersForDate(db, tenantId, branchId, morning)
     : { open: true, missing: [] };
-  if (morning && gate.open) {
+  if (morning && gate.open && !requestedDate) {
     await carryForwardBranch(db, tenantId, branchId, now, options);
   }
-  const businessDate = morning || await latestBookDate(db, tenantId, branchId);
+  const businessDate = requestedDate || morning || await latestBookDate(db, tenantId, branchId);
   const deskOpen = !morning || gate.open;
   const books = !businessDate || !deskOpen
     ? []
@@ -334,11 +415,13 @@ async function prepareDesk(db, user, now = new Date()) {
   if (!isBusinessDay(today, options) && !calendar.nonWorking) {
     calendar.nonWorking = { date: today, name: 'Not a trading day' };
   }
+  const dates = await listBookDates(db, tenantId, branchId);
   return {
     businessDate,
     deskOpen,
     missingPosts: gate.missing,
     books,
+    dates,
     rotation,
     carryFlags,
     calendar,
@@ -366,6 +449,8 @@ async function start() {
   if (process.env.SEED_DEMO_DATA === 'true') {
     await seedDemo(db);
     await ensureMasterAdmin(db);
+    const working = await ensureWorkingBooks(db);
+    console.log(JSON.stringify({ event: 'working_books', ...working }));
   }
   const app = buildApp(db);
   const port = Number(process.env.PORT || 8080);
