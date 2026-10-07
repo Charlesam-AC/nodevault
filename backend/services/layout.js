@@ -59,7 +59,6 @@ function subtotal(page, group, groupLabel, channel, header, currency, symbol, in
 
 function kwachaLayout() {
   const reissuableLabel = 'Re-Issuable Notes';
-  const unfitLabel = 'Non-Re-Issuable Notes';
   const coinsLabel = 'Coins';
   const columns = [
     ...denominations('LEFT', 'REISSUABLE', reissuableLabel, 'REISSUABLE', 'ZMW', 'K', [
@@ -71,14 +70,6 @@ function kwachaLayout() {
       ['K10', 'K10'],
     ]),
     subtotal('LEFT', 'REISSUABLE', reissuableLabel, 'REISSUABLE', 'Total Re-Issuable', 'ZMW', 'K', true),
-    ...denominations('RIGHT', 'UNFIT', unfitLabel, 'UNFIT', 'ZMW', 'K', [
-      ['K100', 'K100'],
-      ['K50', 'K50'],
-      ['K20', 'K20'],
-      ['K10', 'K10'],
-      ['K5', 'K5'],
-      ['K2', 'K2'],
-    ]),
     ...denominations('RIGHT', 'COINS', coinsLabel, 'COINS', 'ZMW', 'K', [
       ['K5', 'K5'],
       ['K2', 'K2'],

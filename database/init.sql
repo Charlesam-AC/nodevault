@@ -291,8 +291,8 @@ CREATE TABLE dispatch_outbox (
 );
 
 -- Column catalogue for each paper book. Values are not stored here.
--- Kwacha Total Treasury is re-issuable (A) plus coins (C). There is no Old Currency column B.
--- Non-re-issuable note denominations are listed, and in_grand is false for them.
+-- Kwacha Total Treasury is re-issuable (A) plus coins (C).
+-- There is no Old Currency column and no non-re-issuable notes section.
 CREATE TABLE denomination_catalogue (
   book_class nodevault_book_class NOT NULL,
   page_side VARCHAR(5) NOT NULL CHECK (page_side IN ('LEFT', 'RIGHT')),

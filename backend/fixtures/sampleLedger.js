@@ -6,7 +6,6 @@
 //   Bal b/f coins remainder 2,650 = K2 2,000 + 50n 500 + 10n 100 + 5n 50
 //   Bal b/d re-issuable remainder 17,000 = K50 10,000 + K20 5,000 + K10 2,000
 //   Bal b/d coins remainder 265 = K2 200 + 50n 50 + 10n 10 + 5n 5
-// Non-re-issuable notes are zero in the sample. They are not part of Total Treasury.
 // Foreign totals use ZAR and USD. EUR, GBP, and the extra USD/ZAR denominations are zero.
 
 const DATE = '2026-10-03';

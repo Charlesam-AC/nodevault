@@ -83,20 +83,11 @@ test('sample rows hit the published Kwacha, ZAR, and USD totals', () => {
   assert.equal(formatMoney(bancs.ZAR, 'R'), BANCS_TOTALS.zar.display);
 });
 
-test('non-re-issuable notes do not enter the Kwacha grand total', () => {
-  const [opening] = kwachaRows;
-  const withUnfit = {
-    ...opening,
-    amounts: {
-      ...opening.amounts,
-      UNFIT: { K100: '100.00' },
-    },
-  };
-  const plain = composeRow('KWACHA_TREASURY', opening);
-  const dirty = composeRow('KWACHA_TREASURY', withUnfit);
-  const grand = (cells) => cells.find((cell) => cell.kind === 'GRAND').amountMinor;
-  assert.equal(grand(plain), grand(dirty));
-  assert.equal(formatMoney(grand(dirty), 'K'), 'K898,650.00');
+test('the Kwacha book rejects a non-re-issuable notes channel', () => {
+  assert.throws(
+    () => composeRow('KWACHA_TREASURY', { amounts: { UNFIT: { K100: '100.00' } } }),
+    /Unknown amount channel UNFIT/,
+  );
 });
 
 test('each of the three books can be opened and keeps its own position', async () => {

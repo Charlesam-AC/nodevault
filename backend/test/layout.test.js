@@ -54,6 +54,11 @@ test('kwacha layout is notes, re-issuable, coins, and grand total, with no old c
   assert.ok(labels.includes('Total Coins'));
   assert.ok(labels.includes('Grand Total'));
   assert.equal(labels.some((label) => /old currency/i.test(label)), false);
+  assert.equal(getLayout('KWACHA_TREASURY').columns.some((column) => column.channel === 'UNFIT'), false);
+  assert.equal(
+    publicLayout('KWACHA_TREASURY').groups.some((group) => /non-re-issuable/i.test(group.label || '')),
+    false,
+  );
   assert.equal(getLayout('KWACHA_TREASURY').formula, 'Grand Total = Total Re-Issuable + Total Coins');
   const spread = spreadHeaders('KWACHA_TREASURY');
   assert.equal(spread[0], 'No.');

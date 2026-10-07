@@ -8,13 +8,13 @@ Charles Amulike. Specification v1.0.4. Column layouts follow the photographed pa
 
 | Book | Layout |
 | --- | --- |
-| Kwacha Treasury Book | Re-issuable notes K500–K10, Total Re-Issuable, non-re-issuable notes, coins K5–5n, Total Coins, Grand Total |
+| Kwacha Treasury Book | Re-issuable notes K500–K10, Total Re-Issuable, coins K5–5n, Total Coins, Grand Total |
 | Foreign Currency Treasury Book | EURO NOTES, GBP NOTES, USD NOTES, ZAR NOTES, each with its own total |
 | Bancs Treasury Book | Same foreign-notes layout, separate book and balances |
 
 Foreign Currency and Bancs are built by one layout function (`foreignLayout` in `backend/services/layout.js`). Kwacha has its own. The row number is repeated on the right edge of the spread. `In or Out` is the flow. One Initials column shows custodian 1, custodian 2, and the coordinator; those three are stored separately.
 
-Grand Total = Total Re-Issuable + Total Coins. There is no Old Currency Notes column. Non-re-issuable notes (the second notes group on the Kwacha photograph: K100, K50, K20, K10, K5, K2) are stored and shown, and they are not added into the Grand Total. Foreign currencies are never summed into one figure.
+Grand Total = Total Re-Issuable + Total Coins. There is no Old Currency Notes column and no non-re-issuable notes section. Foreign currencies are never summed into one figure.
 
 ## Business morning and carry-forward
 
@@ -155,7 +155,7 @@ Copy `.env.example`. Do not commit `.env`.
 
 - The PDF table image omitted middle denomination columns. The sample still totals K1,656,515.00, R25,000.00, and $8,000.00. Unpublished Kwacha cells that make those totals true are listed in `backend/fixtures/sampleLedger.js`.
 - `Bal b/d` in the sample is a cash-in movement. `Bal b/f` and `Bal c/d` are position rows.
-- The second Kwacha notes group is the photographed non-re-issuable series. It is not part of Grand Total, and Old Currency Notes (B) is omitted.
+- Old Currency Notes (B) and the non-re-issuable notes group are omitted from the Kwacha book. Grand Total is re-issuable notes plus coins.
 - USD 2 is a real column on the foreign book. EUR and GBP columns are zero in the specification sample and carry their own figures on the Bancs sample.
 - Silent printing is a server-side dispatch after commit (`PRINTER_MODE=stub` or `network`). It does not run inside the browser.
 - Bancs has no separate photographed sheet, so it reuses the foreign-notes layout on its own book.
