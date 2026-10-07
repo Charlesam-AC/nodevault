@@ -34,7 +34,7 @@ Bal c/d itself is still the certified last line the three-person close checks. I
 
 ## Rotation and handover
 
-Head teller coordinators and the two vault-custodian seats each have a schedule: weekly, fortnightly, monthly, or a custom number of days. The demo coordinator rotates weekly from 28 September 2026. The two custodian seats rotate every two weeks from the same anchor. The closing interlock accepts only the people assigned to those seats on the operating date.
+The head teller and the two vault-custodian seats each have a schedule: weekly, fortnightly, monthly, or a custom number of days. The demo head teller rotates weekly from 28 September 2026. The two custodian seats rotate every two weeks from the same anchor. The closing interlock accepts only the people assigned to those seats on the operating date.
 
 The opening roster is seeded and does not need a prior handover. The next period stays unassigned until outgoing and incoming holders acknowledge it with their closing PINs. The form records who is taking over, employee ID, initials, and the effective date. The handover log and a `HANDOVER_CAPTURED` audit row store the three books' locked Bal c/d balances. Once a business morning falls inside a period with no assignment, the ledger stays hidden until that handover is captured. A handover can be acknowledged before that morning.
 
@@ -46,7 +46,7 @@ Relief holders in the demo directory, same password and closing PIN as the other
 | --- | --- |
 | Vault custodian | `custodian.relief@demo-bank.example` |
 | Vault custodian | `custodian.relief.two@demo-bank.example` |
-| Head teller coordinator | `coordinator.relief@demo-bank.example` |
+| Head Teller | `coordinator.relief@demo-bank.example` |
 
 Money is integer minor units (1/100) from the page through PostgreSQL `BIGINT`. Core-bank amounts are decimal strings. Nothing in the close path uses floating point.
 
@@ -70,7 +70,7 @@ Password sign-in is on in the sample `.env` (`ENABLE_LOCAL_LOGIN=true` and `AUTH
 | --- | --- |
 | Vault custodian | `charles.amulike@demo-bank.example` |
 | Vault custodian | `custodian.two@demo-bank.example` |
-| Head teller coordinator | `coordinator.mk@demo-bank.example` |
+| Head Teller | `coordinator.mk@demo-bank.example` |
 | Branch teller | `teller.desk@demo-bank.example` |
 | Auditor | `auditor.desk@demo-bank.example` |
 | IT super admin | `it.admin@demo-bank.example` |
@@ -145,7 +145,8 @@ Copy `.env.example`. Do not commit `.env`.
 - A deactivated user (`is_active = false`) is rejected on the next request. Repeated wrong passwords lock that account (`failed_login_count`, `locked_until`).
 - The enforced corporate domain is checked against the tenant domain for both sign-in methods.
 - Closing PINs live in `closing_pin_hash`. Directory passwords live in `password_hash`. The two hashes are produced separately and the demo values are different secrets.
-- Nightly close needs two distinct active `VAULT_CUSTODIAN` users and the `HEAD_TELLER_COORDINATOR` assigned on the rotation calendar for that operating date, all in the same tenant. The certified total must match the book and the core position exactly, per currency.
+- Nightly close needs two distinct active `VAULT_CUSTODIAN` users and the head teller (`HEAD_TELLER_COORDINATOR`) assigned on the rotation calendar for that operating date, all in the same tenant. The certified total must match the book and the core position exactly, per currency.
+- The master admin can add, rename, and remove extra roles. A new role is a reader, a branch administrator, or a branch manager for one branch. Built-in roles stay, and a role can be removed only when nobody holds it. Branch Administrator and Branch Manager see that branch's three books. The administrator can set one non-working day there. The manager can also change teller and branch roles on that branch, and can soft-close or reopen it.
 - The book row is locked, the closure is audited, and the print/email intent is written in the same transaction. The printer and the mailer run only after `COMMIT`. If either fails, the book stays `BALANCED_CLOSED` and the outbox records a retry.
 - Ledger lines, amount cells, and audit events are append-only (triggers, plus no update/delete/truncate for the API role). Closed books reject new lines. Books cannot be deleted. `ON DELETE RESTRICT` keeps history attached.
 - After initialisation the IT super admin cannot sign in alone. Break-glass requires both active vault custodians at once and expires after 60 minutes. The session is audited.

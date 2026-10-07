@@ -3,16 +3,6 @@
 -- Money is stored as BIGINT minor units (1/100 of the major unit). No float columns.
 -- Ledger rows, amount cells, and audit events are append-only.
 
-CREATE TYPE nodevault_user_role AS ENUM (
-  'VAULT_CUSTODIAN',
-  'ATM_CUSTODIAN',
-  'TELLER',
-  'HEAD_TELLER_COORDINATOR',
-  'AUDITOR',
-  'IT_SUPER_ADMIN',
-  'REGIONAL_OPS_MANAGER'
-);
-
 CREATE TYPE nodevault_book_class AS ENUM (
   'KWACHA_TREASURY',
   'FOREIGN_CURRENCY',
@@ -53,7 +43,7 @@ CREATE TABLE nodevault_users (
   full_legal_name VARCHAR(120) NOT NULL,
   employee_id VARCHAR(32) NOT NULL,
   two_letter_initials VARCHAR(8) NOT NULL,
-  system_role nodevault_user_role NOT NULL,
+  system_role VARCHAR(40) NOT NULL CHECK (system_role ~ '^[A-Z][A-Z0-9_]{0,39}$'),
   -- Closing ceremony credential. Never the same secret as password_hash.
   closing_pin_hash TEXT,
   -- Directory password for optional local sign-in. Null when the user has no password.
@@ -68,6 +58,17 @@ CREATE TABLE nodevault_users (
   FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id)
 );
 
+-- Extra roles the master admin adds. Built-in role codes stay in the application.
+CREATE TABLE desk_roles (
+  role_id SERIAL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
+  role_code VARCHAR(40) NOT NULL CHECK (role_code ~ '^[A-Z][A-Z0-9_]{1,39}$'),
+  display_name VARCHAR(80) NOT NULL,
+  power_tier VARCHAR(40) NOT NULL CHECK (power_tier IN ('READER', 'BRANCH_ADMINISTRATOR', 'BRANCH_MANAGER')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, role_code)
+);
+
 CREATE TABLE system_control (
   tenant_id INT PRIMARY KEY REFERENCES bank_tenants (tenant_id),
   initialized_at TIMESTAMPTZ,
@@ -75,7 +76,7 @@ CREATE TABLE system_control (
   entra_enabled BOOLEAN NOT NULL DEFAULT true
 );
 
--- The weekly head-teller coordinator is an assignment, not "any teller".
+-- The weekly head teller is an assignment, not "any teller".
 CREATE TABLE weekly_coordinator_assignments (
   assignment_id BIGSERIAL PRIMARY KEY,
   tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
@@ -689,7 +690,7 @@ $$;
 GRANT USAGE ON SCHEMA public TO nodevault_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nodevault_app;
 
-GRANT SELECT, INSERT ON bank_tenants, branches, nodevault_users, system_control,
+GRANT SELECT, INSERT ON bank_tenants, branches, nodevault_users, desk_roles, system_control,
   weekly_coordinator_assignments, rotation_schedules, handover_logs, post_assignments,
   non_working_closures, non_working_closure_branches, non_working_closure_cancellations,
   gazetted_holidays, gazetted_holiday_cancellations,
@@ -702,6 +703,8 @@ GRANT UPDATE (
   full_legal_name, branch_id, system_role, employee_id, two_letter_initials,
   password_hash, closing_pin_hash, is_active
 ) ON nodevault_users TO nodevault_app;
+GRANT UPDATE (display_name) ON desk_roles TO nodevault_app;
+GRANT DELETE ON desk_roles TO nodevault_app;
 GRANT UPDATE (period_end) ON post_assignments TO nodevault_app;
 GRANT UPDATE (branch_code, branch_name, province, location_name, is_active, permanently_closed) ON branches TO nodevault_app;
 GRANT UPDATE (status, closed_at) ON branch_vault_books TO nodevault_app;

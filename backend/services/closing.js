@@ -81,7 +81,7 @@ async function lockBook(client, tenantId, branchId, closingPayload, deps) {
     throw new VaultError('WRONG_ROLE', 'Both custodians must be active vault custodians', 403);
   }
   if (coord.system_role !== 'HEAD_TELLER_COORDINATOR') {
-    throw new VaultError('WRONG_ROLE', 'The third signatory must be the head teller coordinator', 403);
+    throw new VaultError('WRONG_ROLE', 'The third signatory must be the head teller', 403);
   }
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(operatingDate || '')) {
@@ -98,7 +98,7 @@ async function lockBook(client, tenantId, branchId, closingPayload, deps) {
   if (Number(roster.holders.HEAD_TELLER.user_id) !== ids[2]) {
     throw new VaultError(
       'COORDINATOR_NOT_ASSIGNED',
-      'That coordinator is not assigned to this branch for the operating date',
+      'That head teller is not assigned to this branch for the operating date',
       403,
     );
   }
@@ -195,7 +195,7 @@ async function lockBook(client, tenantId, branchId, closingPayload, deps) {
     signatories: [
       { ...c1, role: 'Primary custodian' },
       { ...c2, role: 'Secondary custodian' },
-      { ...coord, role: 'Weekly teller coordinator' },
+      { ...coord, role: 'Head Teller' },
     ],
   });
   const totals = Object.fromEntries(

@@ -2,6 +2,7 @@ const { VaultError } = require('./errors');
 const { recordAudit } = require('./audit');
 const { isMasterAdmin } = require('../middleware/auth');
 const { updateStaff } = require('./staff');
+const { describeRole, powers } = require('./roles');
 
 // Published First National Bank Zambia branches, from
 // https://www.fnbzambia.co.zm/ways-to-bank/for-me/branch.html
@@ -42,9 +43,13 @@ function assertManager(actor) {
   }
 }
 
-function assertReader(actor) {
-  if (actor.role === 'AUDITOR') return;
-  assertManager(actor);
+async function branchAccess(db, actor) {
+  if (canManage(actor)) return 'manage';
+  if (actor.role === 'AUDITOR') return 'read';
+  const power = powers(await describeRole(db, actor.tenantId, actor.role));
+  if (power.canManageOwnBranch) return 'own';
+  if (power.branchScoped) return 'read-own';
+  throw new VaultError('WRONG_ROLE', 'Only the master admin can change branches', 403);
 }
 
 function cleanCode(value) {
@@ -110,7 +115,7 @@ function publicBranch(row, staff) {
 }
 
 async function listBranches(db, actor) {
-  assertReader(actor);
+  const access = await branchAccess(db, actor);
   const [branches, people] = await Promise.all([
     db.query(
       `SELECT b.branch_id, b.branch_code, b.branch_name, b.province, b.location_name, b.is_active, b.permanently_closed,
@@ -142,17 +147,22 @@ async function listBranches(db, actor) {
     });
     byBranch.set(Number(person.branch_id), list);
   }
+  const visible = access === 'own' || access === 'read-own'
+    ? branches.rows.filter((row) => Number(row.branch_id) === Number(actor.branchId))
+    : branches.rows;
   return {
-    can_manage: canManage(actor),
-    branches: branches.rows.map((row) => publicBranch(row, byBranch.get(Number(row.branch_id)) || [])),
-    assignable: people.rows
+    can_manage: access === 'manage',
+    can_manage_own: access === 'own',
+    branches: visible.map((row) => publicBranch(row, byBranch.get(Number(row.branch_id)) || [])),
+    assignable: access === 'manage' ? people.rows
       .filter((person) => person.is_active && person.system_role !== 'IT_SUPER_ADMIN' && !isMasterAdmin(person))
       .map((person) => ({
         user_id: Number(person.user_id),
         full_legal_name: person.full_legal_name,
         system_role: person.system_role,
         branch_id: person.branch_id === null ? null : Number(person.branch_id),
-      })),
+      }))
+    : [],
   };
 }
 
@@ -197,8 +207,23 @@ async function addBranch(db, actor, body) {
 }
 
 async function updateBranch(db, actor, branchId, body) {
-  assertManager(actor);
+  const access = await branchAccess(db, actor);
+  if (access === 'read' || access === 'read-own') {
+    throw new VaultError('WRONG_ROLE', 'Only the master admin can change branches', 403);
+  }
   const branch = await loadBranch(db, actor.tenantId, branchId);
+  if (access === 'own') {
+    if (Number(branch.branch_id) !== Number(actor.branchId)) {
+      throw new VaultError('WRONG_BRANCH', 'This role can change only its own branch', 403);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'permanently_closed')) {
+      throw new VaultError('BRANCH_PERMANENT', 'Closing a branch for good stays with the master admin', 403);
+    }
+    const keys = Object.keys(body);
+    if (keys.some((key) => key !== 'is_active')) {
+      throw new VaultError('WRONG_ROLE', 'A branch manager can reopen this branch or close it', 403);
+    }
+  }
   const next = {};
   if (Object.prototype.hasOwnProperty.call(body, 'branch_code')) next.branch_code = cleanCode(body.branch_code);
   if (Object.prototype.hasOwnProperty.call(body, 'branch_name')) next.branch_name = cleanName(body.branch_name);
@@ -211,7 +236,7 @@ async function updateBranch(db, actor, branchId, body) {
     if (body.is_active === true) {
       throw new VaultError('INVALID_BRANCH', 'A branch closed for good stays closed');
     }
-    await assertCanClose(db, actor.tenantId, branch.branch_id);
+    await assertCanClose(db, actor.tenantId, branch.branch_id, null);
     next.permanently_closed = true;
     next.is_active = false;
   }
@@ -222,7 +247,9 @@ async function updateBranch(db, actor, branchId, body) {
     if (body.is_active === true && branch.permanently_closed) {
       throw new VaultError('BRANCH_PERMANENT', 'This branch is closed for good and cannot be reopened', 409);
     }
-    if (body.is_active === false) await assertCanClose(db, actor.tenantId, branch.branch_id);
+    if (body.is_active === false) {
+      await assertCanClose(db, actor.tenantId, branch.branch_id, access === 'own' ? actor.userId : null);
+    }
     next.is_active = body.is_active;
   }
   if (!Object.keys(next).length) throw new VaultError('INVALID_BRANCH', 'Nothing on this branch was changed');
@@ -260,11 +287,12 @@ async function updateBranch(db, actor, branchId, body) {
   return publicBranch(saved, []);
 }
 
-async function assertCanClose(db, tenantId, branchId) {
+async function assertCanClose(db, tenantId, branchId, ignoreUserId = null) {
   const staff = await db.query(
     `SELECT COUNT(*)::int AS n FROM nodevault_users
-     WHERE tenant_id = $1 AND branch_id = $2 AND is_active = true`,
-    [tenantId, branchId],
+     WHERE tenant_id = $1 AND branch_id = $2 AND is_active = true
+       AND ($3::int IS NULL OR user_id <> $3)`,
+    [tenantId, branchId, ignoreUserId],
   );
   if (Number(staff.rows[0].n) > 0) {
     throw new VaultError('BRANCH_IN_USE', 'Move the staff off this branch before closing it', 409);

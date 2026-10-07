@@ -293,6 +293,41 @@
         </form>
         </div>
       </section>
+      <section id="role-panel" hidden class="fold" aria-label="Roles">
+        <button type="button" class="fold-toggle" aria-expanded="true" aria-controls="role-body">
+          <span class="fold-mark" aria-hidden="true"></span>
+          <span class="fold-copy">
+            <span class="fold-kicker">People</span>
+            <span class="fold-title">Roles</span>
+          </span>
+          <span class="fold-count" id="role-count"></span>
+          <span class="fold-switch"><span class="fold-word">Hide</span><span class="fold-chevron" aria-hidden="true"></span></span>
+        </button>
+        <div id="role-body" class="fold-body">
+          <p id="role-copy" class="fold-lead"></p>
+          <form id="role-add" hidden>
+            <h4 class="staff-span">Add a role</h4>
+            <label>Name
+              <input id="role-name" maxlength="80" required autocomplete="off">
+            </label>
+            <label>Power
+              <select id="role-tier" required>
+                <option value="READER">Reader of one branch</option>
+                <option value="BRANCH_ADMINISTRATOR">Branch Administrator</option>
+                <option value="BRANCH_MANAGER">Branch Manager</option>
+              </select>
+            </label>
+            <p class="staff-span hint">A new role can read one branch, administer it, or manage it. It cannot write a line, amend a book, or sign the close.</p>
+            <p id="role-add-error" class="error staff-span" role="alert"></p>
+            <div class="staff-span">
+              <button type="submit" id="role-add-submit">Add this role</button>
+            </div>
+          </form>
+          <p id="role-note" class="staff-note" role="status"></p>
+          <p id="role-error" class="error" role="alert"></p>
+          <div id="role-list" class="staff-list"></div>
+        </div>
+      </section>
       <section id="calendar-panel" class="fold" aria-label="Non-working days">
         <button type="button" class="fold-toggle" aria-expanded="true" aria-controls="calendar-body">
           <span class="fold-mark" aria-hidden="true"></span>
@@ -403,7 +438,7 @@
       <div class="pin-grid">
         <label>Custodian 1<select id="c1-id" required></select><input id="c1-pin" type="password" inputmode="numeric" autocomplete="off" required placeholder="Closing PIN"></label>
         <label>Custodian 2<select id="c2-id" required></select><input id="c2-pin" type="password" inputmode="numeric" autocomplete="off" required placeholder="Closing PIN"></label>
-        <label>Weekly coordinator<select id="coord-id" required></select><input id="coord-pin" type="password" inputmode="numeric" autocomplete="off" required placeholder="Closing PIN"></label>
+        <label>Head Teller<select id="coord-id" required></select><input id="coord-pin" type="password" inputmode="numeric" autocomplete="off" required placeholder="Closing PIN"></label>
       </div>
       <p id="close-error" class="error" role="alert"></p>
       <div class="dialog-actions">

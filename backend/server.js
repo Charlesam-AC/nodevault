@@ -28,6 +28,15 @@ const { readEntraEnabled, setEntraEnabled } = require('./services/entraToggle');
 const { actAsUser, returnToAdmin } = require('./services/actAs');
 const { listStaff, addStaff, updateStaff, removeStaff, assignPost } = require('./services/staff');
 const {
+  describeRole,
+  powers,
+  roleLabels,
+  listRoles,
+  addRole,
+  renameRole,
+  removeRole,
+} = require('./services/roles');
+const {
   listBranches,
   addBranch,
   updateBranch,
@@ -79,6 +88,18 @@ function deskCanPost(user) {
 function deskCanAmend(user) {
   if (user.role === 'VAULT_CUSTODIAN') return true;
   return isMasterAdmin({ work_email: user.email }) && !user.actorUserId;
+}
+
+async function visibleBook(db, user, bookId) {
+  const power = powers(await describeRole(db, user.tenantId, user.role));
+  if (!power.branchScoped) return;
+  const book = await db.query(
+    `SELECT branch_id FROM branch_vault_books WHERE book_id = $1 AND tenant_id = $2`,
+    [bookId, user.tenantId],
+  );
+  if (book.rowCount !== 1 || Number(book.rows[0].branch_id) !== Number(user.branchId)) {
+    throw new VaultError('BOOK_NOT_FOUND', 'Treasury book not found', 404);
+  }
 }
 
 function entrySignatories(body) {
@@ -198,12 +219,16 @@ function buildApp(db) {
     res.json(opened);
   }));
 
-  app.get('/api/me', guard, (req, res) => {
+  app.get('/api/me', guard, asyncRoute(async (req, res) => {
+    const spec = await describeRole(db, req.user.tenantId, req.user.role);
+    const power = powers(spec);
     res.json({
       user_id: req.user.userId,
       full_legal_name: req.user.fullLegalName,
       work_email: req.user.email,
       system_role: req.user.role,
+      role_label: spec ? spec.label : req.user.role,
+      branch_scoped: power.branchScoped,
       employee_id: req.user.employeeId,
       initials: req.user.initials,
       bank_name: req.user.bankName,
@@ -213,17 +238,48 @@ function buildApp(db) {
       acting_as: Boolean(req.user.actorUserId),
       actor_name: req.user.actorName,
     });
-  });
+  }));
 
   app.get('/api/directory', guard, asyncRoute(async (req, res) => {
     const rows = await db.query(
-      `SELECT user_id, full_legal_name, work_email, employee_id, two_letter_initials, system_role
+      `SELECT user_id, full_legal_name, work_email, employee_id, two_letter_initials, system_role, branch_id
        FROM nodevault_users
        WHERE tenant_id = $1 AND is_active = true
        ORDER BY employee_id`,
       [req.user.tenantId],
     );
-    res.json({ users: rows.rows });
+    const labels = await roleLabels(db, req.user.tenantId);
+    const power = powers(await describeRole(db, req.user.tenantId, req.user.role));
+    let users = rows.rows.map((row) => ({
+      user_id: row.user_id,
+      full_legal_name: row.full_legal_name,
+      work_email: row.work_email,
+      employee_id: row.employee_id,
+      two_letter_initials: row.two_letter_initials,
+      system_role: row.system_role,
+      role_label: labels.get(row.system_role) || row.system_role,
+      branch_id: row.branch_id === null ? null : Number(row.branch_id),
+    }));
+    if (power.branchScoped) {
+      users = users.filter((user) => user.branch_id === Number(req.user.branchId));
+    }
+    res.json({ users });
+  }));
+
+  app.get('/api/roles', guard, asyncRoute(async (req, res) => {
+    res.json(await listRoles(db, req.user));
+  }));
+
+  app.post('/api/roles', guard, asyncRoute(async (req, res) => {
+    res.status(201).json(await addRole(db, req.user, req.body || {}));
+  }));
+
+  app.patch('/api/roles/:roleCode', guard, asyncRoute(async (req, res) => {
+    res.json(await renameRole(db, req.user, req.params.roleCode, req.body || {}));
+  }));
+
+  app.delete('/api/roles/:roleCode', guard, asyncRoute(async (req, res) => {
+    res.json(await removeRole(db, req.user, req.params.roleCode));
   }));
 
   app.get('/api/staff', guard, asyncRoute(async (req, res) => {
@@ -313,11 +369,13 @@ function buildApp(db) {
   }));
 
   app.get('/api/books/:bookId', guard, asyncRoute(async (req, res) => {
+    await visibleBook(db, req.user, req.params.bookId);
     const view = await getBookView(db, req.user.tenantId, req.params.bookId);
     res.json(view);
   }));
 
   app.post('/api/books/:bookId/entries', guard, asyncRoute(async (req, res) => {
+    await visibleBook(db, req.user, req.params.bookId);
     if (!deskCanPost(req.user)) {
       throw new VaultError('WRONG_ROLE', 'This desk cannot add ledger rows', 403);
     }
@@ -357,6 +415,7 @@ function buildApp(db) {
   }));
 
   app.patch('/api/books/:bookId/entries/:lineNumber', guard, asyncRoute(async (req, res) => {
+    await visibleBook(db, req.user, req.params.bookId);
     if (!deskCanAmend(req.user)) {
       throw new VaultError('WRONG_ROLE', 'Only a vault custodian or the master admin can amend an open book', 403);
     }
@@ -394,6 +453,7 @@ function buildApp(db) {
   }));
 
   app.post('/api/books/:bookId/square', guard, asyncRoute(async (req, res) => {
+    await visibleBook(db, req.user, req.params.bookId);
     if (!deskCanPost(req.user)) {
       throw new VaultError('WRONG_ROLE', 'This desk cannot add ledger rows', 403);
     }
@@ -420,6 +480,7 @@ function buildApp(db) {
   }));
 
   app.post('/api/books/:bookId/close', guard, asyncRoute(async (req, res) => {
+    await visibleBook(db, req.user, req.params.bookId);
     const book = await db.query(
       `SELECT branch_id FROM branch_vault_books WHERE book_id = $1 AND tenant_id = $2`,
       [req.params.bookId, req.user.tenantId],
@@ -435,6 +496,7 @@ function buildApp(db) {
   }));
 
   app.post('/api/books/:bookId/dispatch/retry', guard, asyncRoute(async (req, res) => {
+    await visibleBook(db, req.user, req.params.bookId);
     const book = await db.query(
       `SELECT status FROM branch_vault_books WHERE book_id = $1 AND tenant_id = $2`,
       [req.params.bookId, req.user.tenantId],
@@ -510,9 +572,13 @@ async function prepareDesk(db, user, now = new Date(), requestedDate = null) {
   }
   const businessDate = requestedDate || morning || await latestBookDate(db, tenantId, branchId);
   const deskOpen = !morning || gate.open;
-  const books = !businessDate || !deskOpen
+  const power = user.role ? powers(await describeRole(db, tenantId, user.role)) : powers(null);
+  let books = !businessDate || !deskOpen
     ? []
     : await listBooks(db, tenantId, businessDate);
+  if (power.branchScoped) {
+    books = books.filter((row) => Number(row.branch_id) === Number(branchId));
+  }
   const rotation = await rotationView(db, tenantId, branchId, now, options);
   const carryFlags = businessDate
     ? await listCarryFlags(db, tenantId, branchId, businessDate)

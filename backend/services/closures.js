@@ -3,6 +3,7 @@ const { recordAudit } = require('./audit');
 const { addDays, calendarOptions, zonedParts } = require('./calendar');
 const { holidayDates, zambiaHolidays } = require('./zambiaHolidays');
 const { isMasterAdmin } = require('../middleware/auth');
+const { describeRole, powers } = require('./roles');
 
 const OPS_ROLE = 'REGIONAL_OPS_MANAGER';
 
@@ -16,17 +17,23 @@ function assertOps(actor) {
   }
 }
 
-function canSetNonWorkingDay(actor) {
-  if (!actor || actor.actorUserId) return false;
-  if (actor.role === OPS_ROLE) return true;
-  return isMasterAdmin({ work_email: actor.email });
+async function actorPowers(db, actor) {
+  if (!actor) return powers(null);
+  return powers(await describeRole(db, actor.tenantId, actor.role));
 }
 
-function assertDayWriter(actor) {
-  if (canSetNonWorkingDay(actor)) return;
+async function canSetNonWorkingDay(db, actor) {
+  if (!actor || actor.actorUserId) return false;
+  if (actor.role === OPS_ROLE) return true;
+  if (isMasterAdmin({ work_email: actor.email })) return true;
+  return (await actorPowers(db, actor)).canSetDay;
+}
+
+async function assertDayWriter(db, actor) {
+  if (await canSetNonWorkingDay(db, actor)) return;
   throw new VaultError(
     'FORBIDDEN',
-    'Only the master admin or a regional operations manager can set a non-working day.',
+    'Only the master admin, a regional operations manager, or this branch\'s administrator can set a non-working day.',
     403,
   );
 }
@@ -188,9 +195,13 @@ async function declareClosure(db, actor, body) {
 }
 
 async function declareNonWorkingDay(db, actor, body) {
-  assertDayWriter(actor);
+  await assertDayWriter(db, actor);
   const date = String(body.non_working_date || body.nonWorkingDate || body.date || '').trim();
+  const power = await actorPowers(db, actor);
   const allBranches = body.all_branches === true || body.scope === 'TENANT';
+  if (power.branchScoped && allBranches) {
+    throw new VaultError('CLOSURE_SCOPE', 'This role can close only its own branch', 403);
+  }
   if (allBranches) {
     return writeClosure(db, actor, {
       scope: 'TENANT',
@@ -203,6 +214,12 @@ async function declareNonWorkingDay(db, actor, body) {
   const branchIds = Array.isArray(listed)
     ? listed
     : [body.branch_id || body.branchId || actor.branchId];
+  if (power.branchScoped) {
+    const onlyOwn = branchIds.length === 1 && Number(branchIds[0]) === Number(actor.branchId);
+    if (!onlyOwn) {
+      throw new VaultError('CLOSURE_SCOPE', 'This role can close only its own branch', 403);
+    }
+  }
   return writeClosure(db, actor, {
     scope: 'BRANCH',
     branchIds,
@@ -290,7 +307,8 @@ async function writeClosure(db, actor, body) {
 }
 
 async function cancelClosure(db, actor, closureId) {
-  assertDayWriter(actor);
+  await assertDayWriter(db, actor);
+  const power = await actorPowers(db, actor);
   const id = Number(closureId);
   const found = await db.query(
     `SELECT c.closure_id, c.start_date::text AS start_date, c.scope,
@@ -307,6 +325,18 @@ async function cancelClosure(db, actor, closureId) {
   const today = businessToday(actor.now);
   if (row.start_date <= today) {
     throw new VaultError('CLOSURE_STARTED', 'A closure can only be cancelled before it starts', 409);
+  }
+  if (power.branchScoped) {
+    const links = await db.query(
+      `SELECT branch_id FROM non_working_closure_branches WHERE closure_id = $1 AND tenant_id = $2`,
+      [id, actor.tenantId],
+    );
+    const onlyOwn = row.scope === 'BRANCH'
+      && links.rowCount === 1
+      && Number(links.rows[0].branch_id) === Number(actor.branchId);
+    if (!onlyOwn) {
+      throw new VaultError('FORBIDDEN', 'This role can withdraw only a closure on its own branch', 403);
+    }
   }
   const client = await db.connect();
   try {
@@ -483,6 +513,14 @@ async function optionsForBranch(db, tenantId, branchId, overrides = {}) {
   return options;
 }
 
+function closureCancellable(row, links, actor, ownBranchOnly, today) {
+  if (row.cancelled_at || row.start_date <= today) return false;
+  if (!ownBranchOnly) return true;
+  return row.scope === 'BRANCH'
+    && links.length === 1
+    && Number(links[0].branchId) === Number(actor && actor.branchId);
+}
+
 async function calendarDesk(db, tenantId, branchId, actor, now = new Date()) {
   const options = calendarOptions();
   const today = zonedParts(now, options.timeZone).isoDate;
@@ -546,6 +584,8 @@ async function calendarDesk(db, tenantId, branchId, actor, now = new Date()) {
      FROM branches WHERE tenant_id = $1 AND is_active = true ORDER BY branch_code`,
     [tenantId],
   );
+  const power = await actorPowers(db, actor);
+  const ownBranchOnly = Boolean(power.branchScoped);
   let nonWorking = null;
   if (branchId) {
     const closed = new Set(await closedDatesForBranch(db, tenantId, branchId, today));
@@ -562,7 +602,8 @@ async function calendarDesk(db, tenantId, branchId, actor, now = new Date()) {
   return {
     today,
     canManage: Boolean(actor && actor.role === OPS_ROLE),
-    canSetDay: canSetNonWorkingDay(actor),
+    canSetDay: await canSetNonWorkingDay(db, actor),
+    ownBranchOnly,
     homeBranchId: actor && actor.branchId ? Number(actor.branchId) : null,
     nonWorking,
     holidays,
@@ -578,7 +619,7 @@ async function calendarDesk(db, tenantId, branchId, actor, now = new Date()) {
       setAt: row.created_at,
       cancelled: Boolean(row.cancelled_at),
       appliesHere: applies(row),
-      cancellable: !row.cancelled_at && row.start_date > today,
+      cancellable: closureCancellable(row, byClosure.get(Number(row.closure_id)) || [], actor, ownBranchOnly, today),
       branches: byClosure.get(Number(row.closure_id)) || [],
     })),
     gazetted: gazetted.rows.map((row) => ({
@@ -591,13 +632,15 @@ async function calendarDesk(db, tenantId, branchId, actor, now = new Date()) {
       cancelled: Boolean(row.cancelled_at),
       cancellable: !row.cancelled_at && row.holiday_date > today,
     })),
-    branches: directory.rows.map((row) => ({
-      branchId: Number(row.branch_id),
-      branchCode: row.branch_code,
-      branchName: row.branch_name,
-      province: row.province,
-      locationName: row.location_name,
-    })),
+    branches: directory.rows
+      .filter((row) => !ownBranchOnly || Number(row.branch_id) === Number(actor && actor.branchId))
+      .map((row) => ({
+        branchId: Number(row.branch_id),
+        branchCode: row.branch_code,
+        branchName: row.branch_name,
+        province: row.province,
+        locationName: row.location_name,
+      })),
   };
 }
 

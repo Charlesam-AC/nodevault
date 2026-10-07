@@ -56,6 +56,7 @@ async function setupPools() {
 async function resetDatabase() {
   await adminPool.query(`
     DROP TABLE IF EXISTS
+      desk_roles,
       gazetted_holiday_cancellations,
       gazetted_holidays,
       non_working_closure_cancellations,
@@ -111,7 +112,7 @@ async function createDesk(pinHash, options = {}) {
   const people = [
     ['c1', 'charles.amulike@demo-bank.example', 'Charles Amulike', 'CUST-0149', 'C.A.', 'VAULT_CUSTODIAN'],
     ['c2', 'custodian.two@demo-bank.example', 'Secondary Custodian', 'CUST-0288', 'J.P.', 'VAULT_CUSTODIAN'],
-    ['coord', 'coordinator.mk@demo-bank.example', 'Head Teller Coordinator', 'TELL-0811', 'M.K.', 'HEAD_TELLER_COORDINATOR'],
+    ['coord', 'coordinator.mk@demo-bank.example', 'Head Teller', 'TELL-0811', 'M.K.', 'HEAD_TELLER_COORDINATOR'],
     ['teller', 'teller.desk@demo-bank.example', 'Branch Teller', 'TELL-1004', 'T.D.', 'TELLER'],
     ['admin', 'it.admin@demo-bank.example', 'IT Super Admin', 'IT-0001', 'I.T.', 'IT_SUPER_ADMIN'],
     ['rom', 'rom@demo-bank.example', 'Regional Operations Manager', 'ROM-0001', 'R.M.', 'REGIONAL_OPS_MANAGER'],

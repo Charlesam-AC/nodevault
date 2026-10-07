@@ -58,7 +58,7 @@ async function seedDemo(db) {
   const people = [
     ['charles.amulike@demo-bank.example', 'Charles Amulike', 'CUST-0149', 'C.A.', 'VAULT_CUSTODIAN'],
     ['custodian.two@demo-bank.example', 'Secondary Custodian', 'CUST-0288', 'J.P.', 'VAULT_CUSTODIAN'],
-    ['coordinator.mk@demo-bank.example', 'Head Teller Coordinator', 'TELL-0811', 'M.K.', 'HEAD_TELLER_COORDINATOR'],
+    ['coordinator.mk@demo-bank.example', 'Head Teller', 'TELL-0811', 'M.K.', 'HEAD_TELLER_COORDINATOR'],
     ['teller.desk@demo-bank.example', 'Branch Teller', 'TELL-1004', 'T.D.', 'TELLER'],
     ['auditor.desk@demo-bank.example', 'Branch Auditor', 'AUD-0012', 'A.U.', 'AUDITOR'],
     ['it.admin@demo-bank.example', 'IT Super Admin', 'IT-0001', 'I.T.', 'IT_SUPER_ADMIN'],

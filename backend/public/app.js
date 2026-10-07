@@ -231,7 +231,7 @@ function renderSignoff() {
     card.className = coordinator ? 'sign-card is-coordinator' : 'sign-card';
     const title = document.createElement('h3');
     title.className = 'seat-kicker';
-    title.textContent = coordinator ? 'Weekly teller coordinator' : 'Vault custodian';
+    title.textContent = coordinator ? 'Head Teller' : 'Vault custodian';
     const name = document.createElement('p');
     name.className = 'seat-name';
     name.textContent = person.full_legal_name;
@@ -507,6 +507,7 @@ function provinceColumns(branches) {
 }
 
 function nonWorkingDayForm(calendar) {
+  if (calendar.ownBranchOnly) return ownBranchDayForm(calendar);
   const form = document.createElement('form');
   form.id = 'day-form';
   form.className = 'day-form';
@@ -631,6 +632,58 @@ function nonWorkingDayForm(calendar) {
         body: JSON.stringify({
           all_branches: allBranches,
           branch_ids: branchIds,
+          non_working_date: date.value,
+          reason: reason.value,
+        }),
+      });
+      await enterDesk(state.businessDate || undefined);
+    } catch (err) {
+      error.textContent = err.message;
+      button.disabled = false;
+    }
+  });
+  return form;
+}
+
+function ownBranchDayForm(calendar) {
+  const form = document.createElement('form');
+  form.id = 'day-form';
+  form.className = 'day-form';
+  const heading = document.createElement('h4');
+  heading.textContent = 'Set a non-working day';
+  const hint = document.createElement('p');
+  hint.className = 'fold-lead';
+  hint.textContent = 'This closes your branch for that one day.';
+  const date = document.createElement('input');
+  date.id = 'day-date';
+  date.type = 'date';
+  date.required = true;
+  const reason = document.createElement('input');
+  reason.id = 'day-reason';
+  reason.required = true;
+  reason.maxLength = 400;
+  reason.placeholder = 'Why this day is closed';
+  const error = document.createElement('p');
+  error.id = 'day-error';
+  error.className = 'error';
+  const button = document.createElement('button');
+  button.type = 'submit';
+  button.id = 'day-submit';
+  button.textContent = 'Set this day';
+  const controls = document.createElement('div');
+  controls.className = 'day-controls';
+  controls.append(field('Date', date), field('Reason', reason), button);
+  form.append(heading, hint, controls, error);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    error.textContent = '';
+    button.disabled = true;
+    try {
+      await api('/api/calendar/non-working', {
+        method: 'POST',
+        body: JSON.stringify({
+          all_branches: false,
+          branch_ids: [Number(calendar.homeBranchId)],
           non_working_date: date.value,
           reason: reason.value,
         }),
@@ -955,7 +1008,7 @@ function fillActAsSelect() {
     if (user.system_role === 'IT_SUPER_ADMIN' || user.user_id === state.me.user_id) continue;
     const option = document.createElement('option');
     option.value = String(user.user_id);
-    option.textContent = `${user.full_legal_name} (${user.system_role})`;
+    option.textContent = `${user.full_legal_name} (${user.role_label || user.system_role})`;
     select.appendChild(option);
   }
   if (current && [...select.options].some((option) => option.value === current)) select.value = current;
@@ -972,8 +1025,9 @@ function renderActAs() {
     panel.hidden = false;
     if (exit) exit.hidden = false;
     if (icon) icon.hidden = false;
-    document.getElementById('acting-copy').textContent = `Testing as ${state.me.full_legal_name} (${state.me.system_role}). Simulating administrative and operational views.`;
-    document.getElementById('session-user').textContent = `Testing as ${state.me.full_legal_name} · ${state.me.system_role}`;
+    const roleLabel = state.me.role_label || state.me.system_role;
+    document.getElementById('acting-copy').textContent = `Testing as ${state.me.full_legal_name} (${roleLabel}). Simulating administrative and operational views.`;
+    document.getElementById('session-user').textContent = `Testing as ${state.me.full_legal_name} · ${roleLabel}`;
     fillActAsSelect();
     return;
   }
@@ -1023,7 +1077,10 @@ function staffBranchOptions() {
 }
 
 function fillStaffChoices() {
-  const roles = (state.staff?.roles || []).map((role) => ({ value: role.code, label: role.label }));
+  const source = state.staff?.can_manage
+    ? (state.staff?.roles || [])
+    : (state.staff?.assignable_roles || []);
+  const roles = source.map((role) => ({ value: role.code, label: role.label }));
   const branches = staffBranchOptions();
   fillSelect(document.getElementById('staff-role'), roles);
   fillSelect(
@@ -1085,6 +1142,10 @@ function renderStaffList() {
       }
     }
     card.append(title, identity, place, posts);
+    const roleEditable = register.can_edit_roles
+      && user.is_active
+      && !user.protected
+      && (register.assignable_roles || []).some((role) => role.code === user.system_role);
     if (register.can_manage && !user.protected) {
       const actions = document.createElement('div');
       actions.className = 'staff-actions';
@@ -1116,6 +1177,16 @@ function renderStaffList() {
         actions.appendChild(restore);
       }
       card.appendChild(actions);
+    } else if (roleEditable) {
+      const actions = document.createElement('div');
+      actions.className = 'staff-actions';
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'staff-quiet';
+      edit.textContent = 'Change role';
+      edit.addEventListener('click', () => openStaffEdit(user));
+      actions.appendChild(edit);
+      card.appendChild(actions);
     } else if (user.protected) {
       const fixed = document.createElement('p');
       fixed.className = 'staff-meta';
@@ -1139,7 +1210,13 @@ function openStaffEdit(user) {
   const form = document.getElementById('staff-edit');
   form.hidden = false;
   document.getElementById('staff-edit-user').value = String(user.user_id);
-  document.getElementById('staff-edit-title').textContent = `Change role or branch for ${user.full_legal_name}`;
+  document.getElementById('staff-edit-title').textContent = state.staff?.can_manage
+    ? `Change role or branch for ${user.full_legal_name}`
+    : `Change role for ${user.full_legal_name}`;
+  const branchLabel = document.getElementById('staff-edit-branch').closest('label');
+  if (branchLabel) branchLabel.hidden = !state.staff?.can_manage;
+  const pinLabel = document.getElementById('staff-edit-pin').closest('label');
+  if (pinLabel) pinLabel.hidden = !state.staff?.can_manage;
   document.getElementById('staff-edit-role').value = user.system_role;
   if (user.branch_id) document.getElementById('staff-edit-branch').value = String(user.branch_id);
   document.getElementById('staff-edit-pin').value = '';
@@ -1174,7 +1251,7 @@ function placeText(branch) {
 async function renderBranches() {
   const panel = document.getElementById('branch-panel');
   if (!panel) return;
-  const show = state.me?.system_role === 'AUDITOR' || state.me?.can_act_as;
+  const show = state.me?.system_role === 'AUDITOR' || state.me?.can_act_as || state.me?.branch_scoped;
   if (!show) {
     panel.hidden = true;
     state.branches = null;
@@ -1196,7 +1273,9 @@ async function renderBranches() {
   state.branches = register;
   document.getElementById('branch-copy').textContent = register.can_manage
     ? 'Add a branch, correct its name and code, or assign staff to it. A closed branch can be reopened, or closed for good. The list includes branches published by First National Bank Zambia.'
-    : 'Every branch on this bank, and the staff attached to each one.';
+    : register.can_manage_own
+      ? 'Close this branch, or reopen it. Closing it for good stays with the master admin.'
+      : 'The branch vault assigned to you, and the staff attached to it.';
   document.getElementById('branch-add').hidden = !register.can_manage;
   document.getElementById('branch-edit').hidden = true;
   const host = document.getElementById('branch-list');
@@ -1224,7 +1303,9 @@ async function renderBranches() {
     if (branch.permanently_closed) {
       people.textContent = 'Closed for good.';
     } else if (!branch.is_active) {
-      people.textContent = 'Closed. Reopen it, or close it for good.';
+      people.textContent = register.can_manage_own
+        ? 'Closed. Reopen it when the branch should trade again.'
+        : 'Closed. Reopen it, or close it for good.';
     } else if (!branch.staff.length) {
       people.textContent = 'No staff assigned.';
     } else {
@@ -1268,6 +1349,16 @@ async function renderBranches() {
       close.addEventListener('click', () => closeBranchDesk(branch));
       actions.append(edit, close);
       card.appendChild(actions);
+    } else if (register.can_manage_own && branch.is_active) {
+      const actions = document.createElement('div');
+      actions.className = 'staff-actions';
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'staff-quiet';
+      close.textContent = 'Close branch';
+      close.addEventListener('click', () => closeBranchDesk(branch));
+      actions.appendChild(close);
+      card.appendChild(actions);
     } else if (register.can_manage && !branch.permanently_closed) {
       const actions = document.createElement('div');
       actions.className = 'staff-actions';
@@ -1296,6 +1387,15 @@ async function renderBranches() {
         actions.append(warning, yes, no);
       });
       actions.append(reopen, permanent);
+      card.appendChild(actions);
+    } else if (register.can_manage_own && !branch.permanently_closed && !branch.is_active) {
+      const actions = document.createElement('div');
+      actions.className = 'staff-actions';
+      const reopen = document.createElement('button');
+      reopen.type = 'button';
+      reopen.textContent = 'Reopen branch';
+      reopen.addEventListener('click', () => reopenBranchDesk(branch));
+      actions.appendChild(reopen);
       card.appendChild(actions);
     }
     host.appendChild(card);
@@ -1381,10 +1481,101 @@ async function reopenBranchDesk(branch) {
   }
 }
 
+async function renderRoles() {
+  const panel = document.getElementById('role-panel');
+  if (!panel) return;
+  if (!state.me?.can_act_as) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  const error = document.getElementById('role-error');
+  error.textContent = '';
+  let catalogue;
+  try {
+    catalogue = await api('/api/roles');
+  } catch (err) {
+    error.textContent = err.message;
+    document.getElementById('role-list').replaceChildren();
+    document.getElementById('role-add').hidden = true;
+    return;
+  }
+  document.getElementById('role-copy').textContent = 'Built-in roles stay, including Head Teller. Add a role when a branch needs another reader, administrator, or manager. Remove one only when nobody holds it.';
+  document.getElementById('role-add').hidden = !catalogue.can_manage;
+  const host = document.getElementById('role-list');
+  host.replaceChildren();
+  const roles = catalogue.roles || [];
+  setFoldCount('role-count', roles.length === 1 ? '1 role' : `${roles.length} roles`);
+  for (const role of roles) {
+    const card = document.createElement('article');
+    card.className = 'staff-card';
+    const title = document.createElement('h4');
+    title.textContent = role.label;
+    const meta = document.createElement('p');
+    meta.className = 'staff-meta';
+    const held = role.holders === 1 ? '1 person' : `${role.holders} people`;
+    meta.textContent = role.builtin ? `Built in · ${held}` : `${role.tier_label} · ${held}`;
+    card.append(title, meta);
+    if (!role.builtin && catalogue.can_manage) {
+      const row = document.createElement('div');
+      row.className = 'role-rename';
+      const input = document.createElement('input');
+      input.value = role.label;
+      input.maxLength = 80;
+      input.setAttribute('aria-label', `Name for ${role.label}`);
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'staff-quiet';
+      save.textContent = 'Save name';
+      save.addEventListener('click', () => renameDeskRole(role, input.value));
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'staff-quiet';
+      remove.textContent = 'Remove';
+      remove.disabled = role.holders > 0;
+      remove.addEventListener('click', () => removeDeskRole(role));
+      row.append(input, save, remove);
+      card.appendChild(row);
+    }
+    host.appendChild(card);
+  }
+}
+
+async function renameDeskRole(role, name) {
+  const error = document.getElementById('role-error');
+  const note = document.getElementById('role-note');
+  error.textContent = '';
+  note.textContent = '';
+  try {
+    const saved = await api(`/api/roles/${encodeURIComponent(role.code)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ display_name: name }),
+    });
+    note.textContent = `${saved.label} is the name on the desk.`;
+    await enterDesk(state.businessDate || undefined);
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
+async function removeDeskRole(role) {
+  const error = document.getElementById('role-error');
+  const note = document.getElementById('role-note');
+  error.textContent = '';
+  note.textContent = '';
+  try {
+    await api(`/api/roles/${encodeURIComponent(role.code)}`, { method: 'DELETE' });
+    note.textContent = `${role.label} is removed.`;
+    await enterDesk(state.businessDate || undefined);
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
 async function renderStaff() {
   const panel = document.getElementById('staff-panel');
   if (!panel) return;
-  const show = state.me?.system_role === 'AUDITOR' || state.me?.can_act_as;
+  const show = state.me?.system_role === 'AUDITOR' || state.me?.can_act_as || state.me?.branch_scoped;
   if (!show) {
     panel.hidden = true;
     state.staff = null;
@@ -1405,8 +1596,10 @@ async function renderStaff() {
   }
   state.staff = register;
   document.getElementById('staff-copy').textContent = register.can_manage
-    ? 'Add a person, assign their branch and role, put them on a vault post, or remove them from the desk.'
-    : 'Who holds each branch, role, and vault post. The master admin makes the changes.';
+    ? 'Add a person, assign their branch and role, put them on a vault post, or remove them from the desk. Branch Manager and Branch Administrator each see one branch vault.'
+    : register.can_edit_roles
+      ? 'Change the role of tellers and branch roles already on this branch.'
+      : 'Who holds this branch, and the role each person has.';
   document.getElementById('staff-add').hidden = !register.can_manage;
   hideStaffEditors();
   fillStaffChoices();
@@ -1510,7 +1703,7 @@ function renderEntry(view) {
   }
   if (!allowed) {
     form.hidden = true;
-    note.textContent = 'This role cannot write a line. Sign in as the master admin, or open the desk as a vault custodian or the weekly head teller.';
+    note.textContent = 'This role cannot write a line. Sign in as the master admin, or open the desk as a vault custodian or the head teller.';
     return;
   }
   form.hidden = false;
@@ -1656,7 +1849,7 @@ async function enterDesk(date) {
   document.body.classList.remove('is-gate');
   document.getElementById('sign-out').hidden = false;
   document.getElementById('bank-name').textContent = state.me.bank_name;
-  document.getElementById('session-user').textContent = `${state.me.full_legal_name} · ${state.me.system_role}`;
+  document.getElementById('session-user').textContent = `${state.me.full_legal_name} · ${state.me.role_label || state.me.system_role}`;
   const banner = document.getElementById('maintenance-banner');
   if (state.me.break_glass) {
     banner.hidden = false;
@@ -1682,6 +1875,12 @@ async function enterDesk(date) {
   } catch (_error) {
     const staff = document.getElementById('staff-panel');
     if (staff) staff.hidden = true;
+  }
+  try {
+    await renderRoles();
+  } catch (_error) {
+    const roles = document.getElementById('role-panel');
+    if (roles) roles.hidden = true;
   }
   renderCalendar(desk.calendar || {});
   renderRotation(desk.rotation || { posts: [] });
@@ -2262,6 +2461,32 @@ document.getElementById('branch-edit-cancel').addEventListener('click', () => {
   document.getElementById('branch-edit-error').textContent = '';
 });
 
+document.getElementById('role-add').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const error = document.getElementById('role-add-error');
+  const note = document.getElementById('role-note');
+  const button = document.getElementById('role-add-submit');
+  error.textContent = '';
+  note.textContent = '';
+  button.disabled = true;
+  try {
+    const created = await api('/api/roles', {
+      method: 'POST',
+      body: JSON.stringify({
+        display_name: document.getElementById('role-name').value,
+        power_tier: document.getElementById('role-tier').value,
+      }),
+    });
+    document.getElementById('role-add').reset();
+    note.textContent = `${created.label} is on the desk.`;
+    await enterDesk(state.businessDate || undefined);
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
 document.getElementById('staff-add').addEventListener('submit', async (event) => {
   event.preventDefault();
   const error = document.getElementById('staff-add-error');
@@ -2306,9 +2531,11 @@ document.getElementById('staff-edit').addEventListener('submit', async (event) =
   const pin = document.getElementById('staff-edit-pin').value.trim();
   const body = {
     system_role: document.getElementById('staff-edit-role').value,
-    branch_id: Number(document.getElementById('staff-edit-branch').value),
   };
-  if (pin) body.closing_pin = pin;
+  if (state.staff?.can_manage) {
+    body.branch_id = Number(document.getElementById('staff-edit-branch').value);
+    if (pin) body.closing_pin = pin;
+  }
   try {
     const saved = await api(`/api/staff/${document.getElementById('staff-edit-user').value}`, {
       method: 'PATCH',

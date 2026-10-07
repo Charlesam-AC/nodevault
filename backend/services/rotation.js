@@ -16,7 +16,7 @@ const { BOOK_ORDER } = require('./books');
 const POSTS = [
   { code: 'CUSTODIAN_ONE', role: 'VAULT_CUSTODIAN', label: 'Vault custodian, seat 1' },
   { code: 'CUSTODIAN_TWO', role: 'VAULT_CUSTODIAN', label: 'Vault custodian, seat 2' },
-  { code: 'HEAD_TELLER', role: 'HEAD_TELLER_COORDINATOR', label: 'Head teller coordinator' },
+  { code: 'HEAD_TELLER', role: 'HEAD_TELLER_COORDINATOR', label: 'Head Teller' },
 ];
 
 function postSpec(code) {

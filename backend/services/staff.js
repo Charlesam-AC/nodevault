@@ -4,15 +4,15 @@ const { recordAudit } = require('./audit');
 const { addDays, diffDays, zonedParts, calendarOptions } = require('./calendar');
 const { isMasterAdmin } = require('../middleware/auth');
 const { POSTS } = require('./rotation');
+const {
+  BUILTIN_ROLES,
+  catalogue,
+  describeRole,
+  managerMayAssign,
+  powers,
+} = require('./roles');
 
-const ROLES = [
-  { code: 'VAULT_CUSTODIAN', label: 'Vault custodian', pin: true },
-  { code: 'ATM_CUSTODIAN', label: 'ATM custodian', pin: true },
-  { code: 'TELLER', label: 'Teller', pin: false },
-  { code: 'HEAD_TELLER_COORDINATOR', label: 'Head teller coordinator', pin: true },
-  { code: 'AUDITOR', label: 'Branch auditor', pin: false },
-  { code: 'REGIONAL_OPS_MANAGER', label: 'Regional operations manager', pin: false },
-];
+const ROLES = BUILTIN_ROLES;
 
 function todayIso(now = new Date()) {
   return zonedParts(now, calendarOptions().timeZone).isoDate;
@@ -28,18 +28,22 @@ function assertManager(actor) {
   }
 }
 
-function assertReader(actor) {
-  if (actor.role === 'AUDITOR') return;
-  assertManager(actor);
+async function staffAccess(db, actor) {
+  if (canManage(actor)) return { level: 'manage', scoped: false };
+  if (actor.role === 'AUDITOR') return { level: 'read', scoped: false };
+  const spec = await describeRole(db, actor.tenantId, actor.role);
+  const power = powers(spec);
+  if (power.branchScoped) {
+    return { level: power.canAssignBranchStaff ? 'branch' : 'read', scoped: true };
+  }
+  throw new VaultError('WRONG_ROLE', 'Only the master admin can change the staff register', 403);
 }
 
-function roleSpec(code) {
-  return ROLES.find((role) => role.code === code) || null;
-}
-
-function assertRole(code) {
-  const role = roleSpec(code);
-  if (!role) throw new VaultError('INVALID_ROLE', 'Choose a desk role');
+async function assertRole(db, tenantId, code) {
+  const role = await describeRole(db, tenantId, code);
+  if (!role || role.code === 'IT_SUPER_ADMIN') {
+    throw new VaultError('INVALID_ROLE', 'Choose a desk role');
+  }
   return role;
 }
 
@@ -180,7 +184,7 @@ function hashRounds() {
 }
 
 async function listStaff(db, actor, now = new Date()) {
-  assertReader(actor);
+  const access = await staffAccess(db, actor);
   const today = todayIso(now);
   const windowStart = addDays(today, -14);
   const [branches, users, assignments] = await Promise.all([
@@ -215,7 +219,13 @@ async function listStaff(db, actor, now = new Date()) {
   const homeBranchId = actor.branchId === null || actor.branchId === undefined
     ? null
     : Number(actor.branchId);
-  const branchRows = branches.rows.map((row) => ({
+  let branchSource = branches.rows;
+  let userSource = users.rows;
+  if (access.scoped) {
+    branchSource = branchSource.filter((row) => Number(row.branch_id) === homeBranchId);
+    userSource = userSource.filter((row) => Number(row.branch_id) === homeBranchId);
+  }
+  const branchRows = branchSource.map((row) => ({
     branch_id: Number(row.branch_id),
     branch_code: row.branch_code,
     branch_name: row.branch_name,
@@ -246,14 +256,22 @@ async function listStaff(db, actor, now = new Date()) {
     });
     byUser.set(Number(row.user_id), list);
   }
+  const listed = await catalogue(db, actor.tenantId);
+  const assignable = access.level === 'branch' ? listed.filter((role) => managerMayAssign(role)) : listed;
   return {
-    can_manage: canManage(actor),
+    can_manage: access.level === 'manage',
+    can_edit_roles: access.level === 'branch',
     today,
     home_branch_id: homeBranchId,
     branches: branchRows,
-    roles: ROLES.map((role) => ({ code: role.code, label: role.label, pin: role.pin })),
+    roles: listed.map((role) => ({
+      code: role.code, label: role.label, pin: role.pin, builtin: role.builtin, tier: role.tier,
+    })),
+    assignable_roles: assignable.map((role) => ({
+      code: role.code, label: role.label, pin: role.pin, builtin: role.builtin, tier: role.tier,
+    })),
     posts: POSTS.map((post) => ({ code: post.code, label: post.label, role: post.role })),
-    users: users.rows.map((row) => ({
+    users: userSource.map((row) => ({
       user_id: Number(row.user_id),
       full_legal_name: row.full_legal_name,
       work_email: row.work_email,
@@ -276,7 +294,7 @@ async function addStaff(db, actor, body) {
   const email = cleanEmail(body.work_email);
   const employeeId = cleanEmployee(body.employee_id);
   const initials = cleanInitials(body.two_letter_initials);
-  const role = assertRole(body.system_role);
+  const role = await assertRole(db, actor.tenantId, body.system_role);
   const branch = await assertBranch(db, actor.tenantId, body.branch_id);
   const pin = assertPin(body.closing_pin, role.pin);
   const password = assertPassword(body.password, pin);
@@ -337,9 +355,25 @@ async function addStaff(db, actor, body) {
 }
 
 async function updateStaff(db, actor, userId, body, now = new Date()) {
-  assertManager(actor);
+  const access = await staffAccess(db, actor);
+  if (access.level === 'read') {
+    throw new VaultError('WRONG_ROLE', 'Only the master admin can change the staff register', 403);
+  }
   const person = await loadPerson(db, actor.tenantId, userId);
   assertEditable(actor, person);
+  if (access.level === 'branch') {
+    const keys = Object.keys(body).filter((key) => body[key] !== undefined);
+    if (keys.some((key) => key !== 'system_role')) {
+      throw new VaultError(
+        'WRONG_ROLE',
+        'A branch manager can change the role of people already on this branch',
+        403,
+      );
+    }
+    if (Number(person.branch_id) !== Number(actor.branchId)) {
+      throw new VaultError('WRONG_BRANCH', 'That person is on another branch', 403);
+    }
+  }
   const today = todayIso(now);
   const held = await openAssignments(db, actor.tenantId, person.user_id, today);
   const next = {};
@@ -352,9 +386,19 @@ async function updateStaff(db, actor, userId, body, now = new Date()) {
   if (Object.prototype.hasOwnProperty.call(body, 'two_letter_initials')) {
     next.two_letter_initials = cleanInitials(body.two_letter_initials);
   }
-  let nextRole = roleSpec(person.system_role);
+  let nextRole = await describeRole(db, actor.tenantId, person.system_role);
   if (Object.prototype.hasOwnProperty.call(body, 'system_role')) {
-    nextRole = assertRole(body.system_role);
+    nextRole = await assertRole(db, actor.tenantId, body.system_role);
+    if (access.level === 'branch') {
+      const current = await describeRole(db, actor.tenantId, person.system_role);
+      if (!managerMayAssign(current) || !managerMayAssign(nextRole)) {
+        throw new VaultError(
+          'INVALID_ROLE',
+          'A branch manager can change the role of tellers and branch roles already on this branch',
+          403,
+        );
+      }
+    }
     if (nextRole.code !== person.system_role && held.some((row) => {
       const spec = POSTS.find((post) => post.code === row.post_code);
       return spec && spec.role !== nextRole.code;
@@ -482,10 +526,10 @@ async function assignPost(db, actor, body, now = new Date()) {
     throw new VaultError('INACTIVE_USER', 'Restore this person before assigning a post', 409);
   }
   if (person.system_role !== spec.role) {
-    const expected = roleSpec(spec.role);
+    const expected = await describeRole(db, actor.tenantId, spec.role);
     throw new VaultError(
       'WRONG_ROLE',
-      `${spec.label} must be an active ${expected ? expected.label.toLowerCase() : spec.role}`,
+      `${spec.label} must be an active ${expected ? expected.label.toLowerCase() : 'matching role'}`,
       403,
     );
   }

@@ -1893,5 +1893,122 @@ body:not(.is-gate) #calendar-panel :is(input, select):focus {
 }
 @media (min-width: 900px) {
   #staff-list.staff-list,
+  #role-list.staff-list,
   .branch-list { grid-template-columns: 1fr 1fr; }
+}
+
+#role-panel { color: #102833; }
+#role-add {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.15rem 0.8rem;
+  background: #ffffff;
+  border: 1px solid #d5e3ea;
+  border-radius: 16px;
+  box-shadow: 0 8px 22px rgba(4, 28, 34, 0.06);
+  padding: 0.95rem 1rem 1rem;
+  margin-top: 0.85rem;
+}
+#role-add[hidden] { display: none; }
+#role-panel form h4 {
+  font-family: "Public Sans", "Segoe UI", sans-serif;
+  font-size: 1.02rem;
+  font-weight: 680;
+  color: #102833;
+}
+#role-panel form label {
+  margin: 0.35rem 0 0;
+  color: #0e6e86;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+#role-panel form .hint {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 450;
+  font-size: 0.86rem;
+  color: #3d5568;
+}
+#role-add-error:empty,
+#role-note:empty,
+#role-error:empty { display: none; margin: 0; padding: 0; min-height: 0; }
+body:not(.is-gate) #role-panel :is(input, select) {
+  margin-top: 0.28rem;
+  min-height: 2.55rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #c5d6de;
+  border-radius: 10px;
+  background-color: #f7fbfb;
+  color: #102833 !important;
+  -webkit-text-fill-color: #102833;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+body:not(.is-gate) #role-panel :is(input, select):hover,
+body:not(.is-gate) #role-panel :is(input, select):focus {
+  outline: none;
+  border-color: #108a7f;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(16, 138, 127, 0.18);
+}
+#role-panel button.fold-toggle {
+  background: #ffffff !important;
+  color: #102833 !important;
+  -webkit-text-fill-color: #102833;
+  border-radius: 0;
+  width: 100%;
+  padding: 0.85rem 1rem;
+}
+#role-panel button.fold-toggle .fold-title {
+  color: #102833 !important;
+  -webkit-text-fill-color: #102833;
+}
+#role-panel button.fold-toggle .fold-count {
+  color: #3d5568 !important;
+  -webkit-text-fill-color: #3d5568;
+}
+#role-panel button.fold-toggle .fold-kicker {
+  color: #0e6e86 !important;
+  -webkit-text-fill-color: #0e6e86;
+}
+#role-panel button.fold-toggle .fold-switch { background: #102833 !important; }
+#role-panel button.fold-toggle .fold-switch,
+#role-panel button.fold-toggle .fold-word,
+#role-panel button.fold-toggle .fold-chevron {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+}
+#role-panel button.fold-toggle:hover .fold-switch { background: #0e4f4a !important; }
+#role-panel button.staff-quiet {
+  background: #d7f0ec !important;
+  color: #102833 !important;
+  -webkit-text-fill-color: #102833 !important;
+  border: 0 !important;
+  border-radius: 10px;
+}
+#role-panel button.staff-quiet:hover { background: #b7e4dc !important; }
+#role-panel button:not(.staff-quiet):not(.fold-toggle) {
+  background: #102833;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+  border: 0;
+  border-radius: 10px;
+  font-weight: 650;
+}
+#role-panel button:not(.staff-quiet):not(.fold-toggle):hover {
+  background: #0e4f4a !important;
+  color: #ffffff !important;
+}
+.role-rename { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-top: 0.55rem; }
+.role-rename input { flex: 1 1 8rem; min-width: 8rem; margin-top: 0; }
+#role-panel .staff-span { grid-column: 1 / -1; }
+@media (min-width: 720px) {
+  #role-add { grid-template-columns: 1fr 1fr; }
+}
+@media print {
+  #role-panel { display: none !important; }
 }
