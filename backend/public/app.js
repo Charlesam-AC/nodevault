@@ -464,6 +464,32 @@ function renderCalendar(calendar) {
   }
 }
 
+function provinceColumns(branches) {
+  const groups = new Map();
+  for (const row of branches || []) {
+    const province = row.province || 'Other';
+    if (!groups.has(province)) groups.set(province, []);
+    groups.get(province).push(row);
+  }
+  for (const list of groups.values()) {
+    list.sort((a, b) => a.branchName.localeCompare(b.branchName) || a.branchCode.localeCompare(b.branchCode));
+  }
+  const preferred = ['Lusaka', 'Copperbelt', 'Central', 'Southern', 'Eastern', 'North-Western', 'Western', 'Luapula', 'Muchinga', 'Northern'];
+  const names = [...groups.keys()].sort((a, b) => {
+    const ia = preferred.indexOf(a);
+    const ib = preferred.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b);
+  });
+  const columns = [[], [], []];
+  if (names.includes('Lusaka')) columns[0].push('Lusaka');
+  if (names.includes('Copperbelt')) columns[1].push('Copperbelt');
+  columns[2].push(...names.filter((name) => name !== 'Lusaka' && name !== 'Copperbelt'));
+  return columns.filter((column) => column.length).map((column) => column.map((province) => ({
+    province,
+    branches: groups.get(province),
+  })));
+}
+
 function nonWorkingDayForm(calendar) {
   const form = document.createElement('form');
   form.id = 'day-form';
@@ -472,7 +498,7 @@ function nonWorkingDayForm(calendar) {
   heading.textContent = 'Set a non-working day';
   const hint = document.createElement('p');
   hint.className = 'fold-lead';
-  hint.textContent = 'Close every branch on that date, or tick the branches it applies to.';
+  hint.textContent = 'Close every branch on that date, or tick branches by province.';
   const coverage = document.createElement('select');
   coverage.id = 'day-coverage';
   for (const [value, label] of [
@@ -487,18 +513,65 @@ function nonWorkingDayForm(calendar) {
   const picks = document.createElement('div');
   picks.id = 'day-branches';
   picks.className = 'day-picks';
-  for (const row of calendar.branches || []) {
-    const box = document.createElement('input');
-    box.type = 'checkbox';
-    box.value = String(row.branchId);
-    if (Number(calendar.homeBranchId) === Number(row.branchId)) box.checked = true;
-    const label = document.createElement('label');
-    label.append(box, document.createTextNode(` ${row.branchCode} ${row.branchName}`));
-    picks.appendChild(label);
+  const summary = document.createElement('p');
+  summary.className = 'day-pick-summary';
+  function syncSummary() {
+    const boxes = [...picks.querySelectorAll('input[type="checkbox"]')];
+    const ticked = boxes.filter((box) => box.checked).length;
+    summary.textContent = ticked === boxes.length
+      ? `All ${boxes.length} branches ticked`
+      : `${ticked} of ${boxes.length} branches ticked`;
   }
-  coverage.addEventListener('change', () => {
-    picks.hidden = coverage.value === 'ALL';
-  });
+  for (const column of provinceColumns(calendar.branches)) {
+    const col = document.createElement('div');
+    col.className = 'day-col';
+    for (const group of column) {
+      const card = document.createElement('section');
+      card.className = 'day-province';
+      const title = document.createElement('h5');
+      const name = document.createElement('span');
+      name.textContent = group.province;
+      const mark = document.createElement('button');
+      mark.type = 'button';
+      mark.className = 'day-province-all';
+      mark.textContent = 'All';
+      title.append(name, mark);
+      card.appendChild(title);
+      const boxesInCard = [];
+      function syncMark() {
+        mark.textContent = boxesInCard.length && boxesInCard.every((box) => box.checked) ? 'Clear' : 'All';
+      }
+      for (const row of group.branches) {
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.value = String(row.branchId);
+        if (Number(calendar.homeBranchId) === Number(row.branchId)) box.checked = true;
+        boxesInCard.push(box);
+        box.addEventListener('change', () => {
+          syncSummary();
+          syncMark();
+        });
+        const branchName = document.createElement('span');
+        branchName.className = 'day-branch-name';
+        branchName.textContent = row.branchName;
+        const code = document.createElement('span');
+        code.className = 'day-branch-code';
+        code.textContent = row.branchCode;
+        const label = document.createElement('label');
+        label.append(box, branchName, code);
+        card.appendChild(label);
+      }
+      mark.addEventListener('click', () => {
+        const turnOn = boxesInCard.some((box) => !box.checked);
+        boxesInCard.forEach((box) => { box.checked = turnOn; });
+        syncMark();
+        syncSummary();
+      });
+      syncMark();
+      col.appendChild(card);
+    }
+    picks.appendChild(col);
+  }
   const date = document.createElement('input');
   date.id = 'day-date';
   date.type = 'date';
@@ -515,16 +588,17 @@ function nonWorkingDayForm(calendar) {
   button.type = 'submit';
   button.id = 'day-submit';
   button.textContent = 'Set this day';
-  form.append(
-    heading,
-    hint,
-    field('Coverage', coverage),
-    picks,
-    field('Date', date),
-    field('Reason', reason),
-    error,
-    button,
-  );
+  const controls = document.createElement('div');
+  controls.className = 'day-controls';
+  controls.append(field('Coverage', coverage), field('Date', date), field('Reason', reason), button);
+  const board = document.createElement('div');
+  board.className = 'day-board';
+  board.append(summary, picks);
+  coverage.addEventListener('change', () => {
+    board.hidden = coverage.value === 'ALL';
+  });
+  syncSummary();
+  form.append(heading, hint, controls, board, error);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     error.textContent = '';

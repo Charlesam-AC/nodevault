@@ -1044,28 +1044,96 @@ footer { padding: 1.5rem 1.25rem 2rem; color: #ffffff; font-size: 0.82rem; }
 .day-cancel { margin-top: 0.85rem; }
 .day-cancel p { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; margin-top: 0.4rem; color: #102833; }
 #day-error:empty { display: none; margin: 0; padding: 0; min-height: 0; }
+.day-controls {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.9fr) minmax(9rem, 0.7fr) minmax(12rem, 1.3fr) auto;
+  gap: 0.45rem 0.7rem;
+  align-items: end;
+  margin-top: 0.7rem;
+}
+.day-controls label { margin: 0; display: grid; gap: 0.2rem; }
+.day-controls button[type="submit"] { margin-top: 0; height: 2.45rem; grid-column: auto; }
+.day-board { margin-top: 0.75rem; }
+.day-pick-summary {
+  margin: 0 0 0.45rem;
+  color: #0e6e86;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .day-picks {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0.25rem 0.8rem;
-  max-height: 11rem;
-  overflow: auto;
-  margin-top: 0.35rem;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid #d5e3ea;
-  border-radius: 10px;
-  background: #ffffff;
+  gap: 0.65rem;
+  align-items: start;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  max-height: none;
+  overflow: visible;
 }
-.day-picks label {
+.day-col { display: grid; gap: 0.65rem; align-content: start; }
+.day-province {
+  background: #ffffff;
+  border: 1px solid #d5e3ea;
+  border-radius: 12px;
+  padding: 0.45rem 0.55rem 0.35rem;
+}
+.day-province h5 {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.4rem;
-  margin: 0;
-  color: #102833;
-  font-size: 0.86rem;
+  margin: 0 0 0.15rem;
+  padding: 0.15rem 0.25rem 0.35rem;
+  border-bottom: 1px solid #e3eef2;
+  color: #0e6e86;
+  font-family: "Public Sans", "Segoe UI", sans-serif;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
-@media (min-width: 720px) {
-  .day-picks { grid-template-columns: 1fr 1fr; }
+.day-province-all {
+  margin: 0;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid #b7c9d2;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #102833 !important;
+  -webkit-text-fill-color: #102833;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+#calendar-body .day-province label {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr) auto;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0;
+  padding: 0.32rem 0.25rem;
+  border-radius: 7px;
+  color: #102833;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+#calendar-body .day-province label:has(input:checked) { background: #e7f6f4; }
+.day-branch-name { overflow: hidden; text-overflow: ellipsis; }
+.day-branch-code {
+  color: #5c727a;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+@media (min-width: 980px) {
+  .day-picks { grid-template-columns: 1.2fr 1.05fr 0.9fr; }
+}
+@media (max-width: 860px) {
+  .day-controls { grid-template-columns: 1fr; }
 }
 @media (min-width: 860px) {
   .day-tools { grid-template-columns: 1fr 1fr; }
@@ -1073,8 +1141,8 @@ footer { padding: 1.5rem 1.25rem 2rem; color: #ffffff; font-size: 0.82rem; }
   .day-form h4,
   .day-form .fold-lead,
   .day-form .error,
-  .day-form .day-picks,
-  .day-form button { grid-column: 1 / -1; }
+  .day-form .day-controls,
+  .day-form .day-board { grid-column: 1 / -1; }
 }
 @media (max-width: 640px) {
   .fold-count { display: none; }
