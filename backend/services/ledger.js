@@ -207,6 +207,7 @@ async function insertLedgerRow(db, {
   custodianTwoInitials,
   tellerCoordInitials,
   accountingLabel,
+  lineReference = null,
   flowDirection,
   amounts,
 }, { manageTransaction = true } = {}) {
@@ -257,8 +258,8 @@ async function insertLedgerRow(db, {
       `INSERT INTO vault_denomination_matrix_ledger (
          book_id, line_number, transaction_date,
          custodian_one_initials, custodian_two_initials, teller_coord_initials,
-         accounting_label, flow_direction
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         accounting_label, line_reference, flow_direction
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        RETURNING matrix_tx_id, line_number`,
       [
         bookId,
@@ -268,6 +269,7 @@ async function insertLedgerRow(db, {
         custodianTwoInitials,
         tellerCoordInitials,
         accountingLabel,
+        lineReference,
         flowDirection,
       ],
     );
@@ -311,7 +313,7 @@ async function loadRows(db, bookId) {
   const entries = await db.query(
     `SELECT matrix_tx_id, line_number, transaction_date::text AS transaction_date,
             custodian_one_initials, custodian_two_initials, teller_coord_initials,
-            accounting_label, flow_direction
+            accounting_label, line_reference, flow_direction
      FROM vault_denomination_matrix_ledger
      WHERE book_id = $1
      ORDER BY line_number`,
@@ -338,6 +340,7 @@ async function loadRows(db, bookId) {
     custodianTwoInitials: entry.custodian_two_initials,
     tellerCoordInitials: entry.teller_coord_initials,
     accountingLabel: entry.accounting_label,
+    lineReference: entry.line_reference,
     flowDirection: entry.flow_direction,
     cells: (byEntry.get(String(entry.matrix_tx_id)) || []).map((cell) => ({
       channel: cell.channel_code,
@@ -367,6 +370,7 @@ function presentRows(bookClass, rows) {
       transaction_date: row.transactionDate,
       date_display: formatDisplayDate(row.transactionDate),
       in_or_out: inOrOut(row),
+      reference: row.lineReference || row.accountingLabel,
       initials: initialsOf(row),
       accounting_label: row.accountingLabel,
       flow_direction: row.flowDirection,

@@ -71,11 +71,16 @@ function entrySignatories(body) {
   if (!label || label.length > 32) {
     throw new VaultError('INVALID_LABEL', 'A reference of up to 32 characters is required');
   }
+  const reference = String(body.line_reference ?? '').trim();
+  if (reference.length > 32) {
+    throw new VaultError('INVALID_LABEL', 'A reference of up to 32 characters is required');
+  }
   return {
     custodianOneInitials: body.custodian_one_initials,
     custodianTwoInitials: body.custodian_two_initials,
     tellerCoordInitials: body.teller_coord_initials,
     accountingLabel: label,
+    lineReference: reference || null,
   };
 }
 
@@ -285,6 +290,7 @@ function buildApp(db) {
         line_number: created.lineNumber,
         flow_direction: req.body.flow_direction,
         accounting_label: signatories.accountingLabel,
+        line_reference: signatories.lineReference,
       },
     });
     res.status(201).json(created);

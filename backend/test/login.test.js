@@ -429,7 +429,7 @@ test('the master admin and an acting custodian can post a line on the open book'
   });
   assert.equal(openView.body.square_required, true);
   assert.equal(openView.body.position.ZMW.display, 'K1,656,565.00');
-  assert.ok(openView.body.rows.some((row) => row.accounting_label === 'CIT_IN' && row.in_or_out === 'In'));
+  assert.ok(openView.body.rows.some((row) => row.accounting_label === 'CIT_IN' && row.in_or_out === 'In' && row.reference === 'CIT_IN'));
 
   const squared = await request(applicationPool, {
     method: 'POST',
@@ -444,7 +444,27 @@ test('the master admin and an acting custodian can post a line on the open book'
   });
   assert.equal(balanced.body.square_required, false);
   assert.equal(balanced.body.rows.at(-1).accounting_label, 'Bal c/d');
+  assert.equal(balanced.body.rows.at(-1).reference, 'Bal c/d');
   assert.equal(balanced.body.position.ZMW.display, 'K1,656,565.00');
+
+  const cited = await request(applicationPool, {
+    method: 'POST',
+    path: `/api/books/${bookId}/entries`,
+    token: acting.body.token,
+    body: {
+      ...line,
+      accounting_label: 'CIT In',
+      line_reference: 'Seal 14',
+      flow_direction: 'IN',
+      amounts: { REISSUABLE: { K100: '10.00' } },
+    },
+  });
+  assert.equal(cited.status, 201);
+  const withReference = await request(applicationPool, {
+    path: `/api/books/${bookId}`,
+    token: acting.body.token,
+  });
+  assert.ok(withReference.body.rows.some((row) => row.in_or_out === 'CIT In' && row.reference === 'Seal 14'));
 
   const deskView = await request(applicationPool, { path: '/api/books', token: master.body.token });
   assert.equal(deskView.body.businessDate, '2026-10-07');

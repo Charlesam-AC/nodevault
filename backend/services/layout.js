@@ -8,6 +8,7 @@ const IDENTITY = [
   { key: 'line_number', header: 'No.' },
   { key: 'date', header: 'Date' },
   { key: 'in_or_out', header: 'In or Out' },
+  { key: 'reference', header: 'Reference' },
   { key: 'initials', header: 'Initials' },
 ];
 

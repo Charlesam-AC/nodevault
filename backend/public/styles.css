@@ -578,6 +578,7 @@ tr[data-label="Bal c/d"] td.dynamic-fit-value { font-weight: 600; }
 .ledger-table td.col-grand { min-width: 9.25rem; }
 .col-no,
 .col-identity { text-align: center; }
+.ledger-table td.col-identity { min-width: 4.5rem; }
 .col-no {
   color: var(--ledger-ink);
   font-weight: 700;

@@ -36,7 +36,7 @@ function columnClasses(column, index, size) {
   if (column.gutter) return 'gutter';
   const classes = [`page-${String(column.page || 'left').toLowerCase()}`];
   if (column.key === 'line_number' || column.key === 'line_repeat') classes.push('col-no');
-  else if (column.key === 'date' || column.key === 'in_or_out' || column.key === 'initials') classes.push('col-identity');
+  else if (column.key === 'date' || column.key === 'in_or_out' || column.key === 'reference' || column.key === 'initials') classes.push('col-identity');
   if (column.kind === 'GRAND') classes.push('col-grand');
   if (column.kind === 'SUBTOTAL' || column.kind === 'GRAND') classes.push('col-total');
   if (index === 0) classes.push('group-start');
@@ -108,6 +108,7 @@ function renderSpread(view) {
       if (column.key === 'line_number' || column.key === 'line_repeat') text = String(row.line_number);
       else if (column.key === 'date') text = row.date_display;
       else if (column.key === 'in_or_out') text = row.in_or_out;
+      else if (column.key === 'reference') text = row.reference || '';
       else if (column.key === 'initials') text = row.initials;
       else {
         text = row.displays[cellKey(column)] || '';
@@ -799,13 +800,27 @@ function renderEntry(view) {
   }
 }
 
+const FLOW_LABELS = {
+  CIT_IN: 'CIT In',
+  CIT_OUT: 'CIT Out',
+  IN: 'In',
+  OUT: 'Out',
+};
+
 function entryMovement() {
   const choice = document.getElementById('entry-flow').value;
-  if (choice === 'CIT_IN') return { flow_direction: 'IN', accounting_label: 'CIT In' };
-  if (choice === 'CIT_OUT') return { flow_direction: 'OUT', accounting_label: 'CIT Out' };
+  const reference = document.getElementById('entry-label').value.trim();
+  if (choice === 'CIT_IN' || choice === 'CIT_OUT') {
+    return {
+      flow_direction: choice === 'CIT_IN' ? 'IN' : 'OUT',
+      accounting_label: FLOW_LABELS[choice],
+      line_reference: reference,
+    };
+  }
   return {
     flow_direction: choice,
-    accounting_label: document.getElementById('entry-label').value.trim(),
+    accounting_label: reference,
+    line_reference: reference,
   };
 }
 
@@ -955,8 +970,10 @@ document.getElementById('login-form').addEventListener('submit', async (event) =
 document.getElementById('sign-out').addEventListener('click', showLogin);
 
 document.getElementById('entry-flow').addEventListener('change', () => {
-  const movement = entryMovement();
-  document.getElementById('entry-label').value = movement.accounting_label;
+  const input = document.getElementById('entry-label');
+  const current = input.value.trim();
+  const defaults = new Set(['', ...Object.values(FLOW_LABELS)]);
+  if (defaults.has(current)) input.value = FLOW_LABELS[document.getElementById('entry-flow').value] || current;
 });
 
 document.getElementById('book-date').addEventListener('change', () => {

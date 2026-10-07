@@ -232,6 +232,7 @@ CREATE TABLE vault_denomination_matrix_ledger (
   custodian_two_initials VARCHAR(8) NOT NULL,
   teller_coord_initials VARCHAR(8) NOT NULL,
   accounting_label VARCHAR(32) NOT NULL,
+  line_reference VARCHAR(32),
   flow_direction VARCHAR(3) NOT NULL CHECK (flow_direction IN ('IN', 'OUT', 'BAL')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (book_id, line_number)
