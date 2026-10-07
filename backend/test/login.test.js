@@ -181,6 +181,53 @@ test('repeated wrong passwords lock the account', async () => {
   assert.ok(new Date(row.rows[0].locked_until).getTime() > Date.now());
 });
 
+test('the master admin password opens an IT super admin session while the seeded admin stays frozen', async () => {
+  const { applicationPool } = pools();
+  await createDesk(pinHash);
+  const saved = {
+    SEED_DEMO_DATA: process.env.SEED_DEMO_DATA,
+    MASTER_ADMIN_EMAIL: process.env.MASTER_ADMIN_EMAIL,
+    MASTER_ADMIN_PASSWORD: process.env.MASTER_ADMIN_PASSWORD,
+    DEMO_CLOSING_PIN: process.env.DEMO_CLOSING_PIN,
+  };
+  process.env.SEED_DEMO_DATA = 'true';
+  process.env.MASTER_ADMIN_EMAIL = 'admin@demo-bank.example';
+  process.env.MASTER_ADMIN_PASSWORD = 'NodeVault-admin-2026';
+  process.env.DEMO_CLOSING_PIN = '135790';
+  try {
+    const { ensureMasterAdmin } = require('../services/seed');
+    const created = await ensureMasterAdmin(applicationPool);
+    assert.equal(created.ensured, true);
+    const again = await ensureMasterAdmin(applicationPool);
+    assert.equal(again.ensured, false);
+
+    const master = await postPassword(applicationPool, {
+      email: 'admin@demo-bank.example',
+      password: 'NodeVault-admin-2026',
+    });
+    assert.equal(master.status, 200);
+    assert.equal(master.body.user.system_role, 'IT_SUPER_ADMIN');
+    assert.equal(master.body.user.work_email, 'admin@demo-bank.example');
+    const principal = await resolvePrincipal(applicationPool, master.body.token);
+    assert.equal(principal.email, 'admin@demo-bank.example');
+    assert.equal(principal.role, 'IT_SUPER_ADMIN');
+    assert.equal(principal.breakGlassId, null);
+
+    await setPassword('it.admin@demo-bank.example');
+    const frozen = await postPassword(applicationPool, {
+      email: 'it.admin@demo-bank.example',
+      password: PASSWORD,
+    });
+    assert.equal(frozen.status, 403);
+    assert.equal(frozen.body.error, 'ADMIN_FROZEN');
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 test('a frozen IT super admin cannot use a correct directory password', async () => {
   const { applicationPool } = pools();
   await createDesk(pinHash);

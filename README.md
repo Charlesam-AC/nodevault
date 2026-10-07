@@ -78,6 +78,16 @@ Password sign-in is on in the sample `.env` (`ENABLE_LOCAL_LOGIN=true` and `AUTH
 
 The IT super admin is frozen after setup. Password sign-in and Entra sign-in both refuse that account until both vault custodians open a break-glass window. Break-glass still uses the Entra assertion.
 
+Master admin (created on startup when `SEED_DEMO_DATA=true`):
+
+| | |
+| --- | --- |
+| Email | `admin@demo-bank.example` (`MASTER_ADMIN_EMAIL`) |
+| Password | `NodeVault-admin-2026` (`MASTER_ADMIN_PASSWORD`) |
+| Role | IT super admin |
+
+This password is not the shared demo password and not the closing PIN. It opens a normal desk session, including the Entra switch. `it.admin@demo-bank.example` stays frozen.
+
 Entra mock sign-in (when `ENTRA_MODE=mock`):
 
 - Assertion: the value of `MOCK_ENTRA_ASSERTION` (`change-me-entra-assertion` in the sample file)

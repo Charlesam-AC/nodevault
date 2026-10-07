@@ -153,7 +153,61 @@ async function seedDemo(db) {
      WHERE book_id = ANY($1::bigint[])`,
     [[...saturdayIds, ...fridayIds]],
   );
+  await ensureMasterAdmin(db);
   return { seeded: true, tenantId, branchId };
 }
 
-module.exports = { seedDemo };
+// The seeded IT super admin stays frozen. This account is the one password
+// that can open an IT super admin session without a break-glass window.
+async function ensureMasterAdmin(db) {
+  if (process.env.SEED_DEMO_DATA !== 'true' || !localLoginEnabled()) return { ensured: false };
+  const email = String(process.env.MASTER_ADMIN_EMAIL || 'admin@demo-bank.example').trim().toLowerCase();
+  if (!email) return { ensured: false };
+  const password = process.env.MASTER_ADMIN_PASSWORD || 'NodeVault-admin-2026';
+  if (password.length < 10) {
+    throw new Error('MASTER_ADMIN_PASSWORD must be at least 10 characters');
+  }
+  const pin = process.env.DEMO_CLOSING_PIN || '';
+  if (password === pin) {
+    throw new Error('MASTER_ADMIN_PASSWORD must be different from DEMO_CLOSING_PIN');
+  }
+  const existing = await db.query(
+    'SELECT user_id FROM nodevault_users WHERE work_email = $1',
+    [email],
+  );
+  if (existing.rowCount > 0) return { ensured: false, userId: existing.rows[0].user_id };
+  const tenant = await db.query('SELECT tenant_id FROM bank_tenants ORDER BY tenant_id LIMIT 1');
+  if (!tenant.rowCount) return { ensured: false };
+  const tenantId = tenant.rows[0].tenant_id;
+  const branch = await db.query(
+    'SELECT branch_id FROM branches WHERE tenant_id = $1 ORDER BY branch_id LIMIT 1',
+    [tenantId],
+  );
+  const rounds = Number(process.env.PIN_BCRYPT_ROUNDS || 10);
+  const passwordHash = await bcrypt.hash(password, rounds);
+  const inserted = await db.query(
+    `INSERT INTO nodevault_users (
+       tenant_id, branch_id, work_email, full_legal_name, employee_id,
+       two_letter_initials, system_role, password_hash, is_active
+     ) VALUES ($1,$2,$3,$4,$5,$6,'IT_SUPER_ADMIN',$7,true)
+     RETURNING user_id`,
+    [
+      tenantId,
+      branch.rows[0] ? branch.rows[0].branch_id : null,
+      email,
+      'Master Admin',
+      'ADM-0001',
+      'M.A.',
+      passwordHash,
+    ],
+  );
+  await recordAudit(db, {
+    tenantId,
+    eventType: 'MASTER_ADMIN_CREATED',
+    actorUserIds: [inserted.rows[0].user_id],
+    detail: { work_email: email },
+  });
+  return { ensured: true, userId: inserted.rows[0].user_id };
+}
+
+module.exports = { seedDemo, ensureMasterAdmin };

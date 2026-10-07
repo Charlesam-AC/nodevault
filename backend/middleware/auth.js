@@ -53,8 +53,20 @@ async function loadUserByEmail(db, email) {
   return result.rows[0] || null;
 }
 
+function masterAdminEmail() {
+  const configured = process.env.MASTER_ADMIN_EMAIL;
+  if (configured === '') return '';
+  return String(configured || 'admin@demo-bank.example').trim().toLowerCase();
+}
+
+function isMasterAdmin(user) {
+  const email = masterAdminEmail();
+  if (!email || !user) return false;
+  return String(user.work_email || '').toLowerCase() === email;
+}
+
 async function rejectFrozenAdmin(db, user, allowFrozenAdmin) {
-  if (user.system_role !== 'IT_SUPER_ADMIN' || allowFrozenAdmin) return;
+  if (user.system_role !== 'IT_SUPER_ADMIN' || allowFrozenAdmin || isMasterAdmin(user)) return;
   const control = await db.query(
     'SELECT it_admin_frozen FROM system_control WHERE tenant_id = $1',
     [user.tenant_id],
@@ -208,7 +220,7 @@ async function resolvePrincipal(db, token, now = new Date()) {
       [user.tenant_id],
     );
     const frozen = Boolean(control.rows[0] && control.rows[0].it_admin_frozen);
-    if (frozen && !payload.break_glass_id) {
+    if (frozen && !payload.break_glass_id && !isMasterAdmin(user)) {
       throw new VaultError(
         'ADMIN_FROZEN',
         'IT super admin access is frozen. Open a break-glass session with both vault custodians.',
@@ -267,4 +279,6 @@ module.exports = {
   signSession,
   resolvePrincipal,
   requireAuth,
+  masterAdminEmail,
+  isMasterAdmin,
 };

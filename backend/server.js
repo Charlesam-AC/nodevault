@@ -5,7 +5,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const { createPool, waitForDb } = require('./db');
 const { VaultError } = require('./services/errors');
 const { syncCatalogue } = require('./services/catalogue');
-const { seedDemo } = require('./services/seed');
+const { seedDemo, ensureMasterAdmin } = require('./services/seed');
 const { listBooks } = require('./services/books');
 const { businessMorning, isBusinessDay, zonedParts } = require('./services/calendar');
 const { carryForwardBranch, listCarryFlags } = require('./services/carry');
@@ -352,6 +352,7 @@ async function start() {
   await syncCatalogue(db);
   if (process.env.SEED_DEMO_DATA === 'true') {
     await seedDemo(db);
+    await ensureMasterAdmin(db);
   }
   const app = buildApp(db);
   const port = Number(process.env.PORT || 8080);
