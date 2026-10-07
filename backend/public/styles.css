@@ -19,7 +19,36 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; min-height: 100vh; }
-body:not(.is-gate) { background: #f3f4f6; color: #1f2937; }
+body:not(.is-gate) { background: #108a7f; color: #f7fbfb; }
+body:not(.is-gate) input,
+body:not(.is-gate) select,
+body:not(.is-gate) textarea { color: #1f2937; background: #fff; }
+#act-as,
+#entra-admin,
+#calendar-panel,
+#rotation-panel article,
+#handover-panel,
+.entry-panel { color: #1f2937; }
+#act-as-open {
+  background: #102833;
+  color: #fff;
+  border: 0;
+  height: auto;
+  min-height: 2.25rem;
+  padding: 0.45rem 0.95rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+#acting-exit {
+  background: #fff;
+  color: #1f2937;
+  border: 1px solid #d1d5db;
+  height: auto;
+  min-height: 2.25rem;
+  padding: 0.45rem 0.95rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
 body:has(#acting-banner:not([hidden])) .mast { display: none; }
 body.is-gate {
   display: flex;
@@ -78,7 +107,7 @@ p { margin: 0; }
 main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
 
 .desk-bar { display: flex; gap: 1.5rem; align-items: flex-end; flex-wrap: wrap; }
-.book-date { color: #1f2937; font-size: 0.82rem; margin: 0; }
+.book-date { color: #f7fbfb; font-size: 0.82rem; margin: 0; }
 .book-date select { width: auto; min-width: 14rem; background: white; color: var(--ink); }
 .login-screen {
   width: min(100%, 70rem);
@@ -361,12 +390,13 @@ button[type="submit"], #open-close {
 }
 .hint, .status, .formula { color: var(--ink-soft); margin: 0.35rem 0; }
 body:not(.is-gate) .status,
-body:not(.is-gate) .formula { color: #3d5568; }
+body:not(.is-gate) .formula { color: #f7fbfb; }
 .error { color: var(--seal); min-height: 1.2rem; margin-top: 0.6rem; }
 .book-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .book-tabs button {
   border: 1px solid var(--rule);
   background: white;
+  color: var(--ink);
   padding: 0.55rem 0.75rem;
 }
 .book-tabs button[aria-selected="true"] {
@@ -598,7 +628,7 @@ dialog { width: min(100% - 2rem, 40rem); }
 dialog::backdrop { background: rgba(16, 40, 51, 0.45); }
 .pin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
-footer { padding: 1.5rem 1.25rem 2rem; color: #4b5563; font-size: 0.82rem; }
+footer { padding: 1.5rem 1.25rem 2rem; color: rgba(247, 251, 251, 0.82); font-size: 0.82rem; }
 .entry-panel {
   background: white;
   color: var(--ink);
