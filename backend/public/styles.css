@@ -26,9 +26,11 @@ body.is-gate {
   min-height: 100vh;
   color: #f7fbfb;
   background:
-    linear-gradient(90deg, transparent 0 17.5%, rgba(255,255,255,0.035) 17.7%, transparent 18.2%),
-    linear-gradient(90deg, transparent 0 81.6%, rgba(255,255,255,0.035) 81.8%, transparent 82.4%),
-    radial-gradient(ellipse 78% 62% at 50% 40%, #1a7a72 0%, #0e5456 34%, #0a3d45 66%, #06262c 100%);
+    radial-gradient(ellipse 28rem 22rem at 28% 46%, rgba(255,255,255,0.08), transparent 70%),
+    radial-gradient(ellipse 26rem 20rem at 74% 40%, rgba(64, 196, 176, 0.22), transparent 72%),
+    linear-gradient(90deg, transparent 0 16%, rgba(255,255,255,0.045) 16.2%, transparent 16.7%),
+    linear-gradient(90deg, transparent 0 83.2%, rgba(255,255,255,0.045) 83.4%, transparent 83.9%),
+    radial-gradient(ellipse 88% 72% at 50% 38%, #1c8a7c 0%, #0f5c5c 36%, #0a3e46 64%, #041c22 100%);
 }
 body.is-gate .mast,
 body.is-gate > footer { display: none; }
@@ -76,58 +78,84 @@ main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
 
 .desk-bar { display: flex; gap: 1.5rem; align-items: flex-start; }
 .login-screen {
-  width: min(100%, 68rem);
+  width: min(100%, 70rem);
   margin: auto;
-  padding: 2rem 1.25rem;
+  padding: 2.25rem 1.5rem;
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(20rem, 26.5rem);
-  gap: 2.75rem;
+  grid-template-columns: minmax(0, 1.12fr) minmax(20rem, 25.5rem);
+  gap: 3.25rem;
   align-items: center;
 }
 .login-story {
-  background: #e7f3f6;
+  display: flex;
+  flex-direction: column;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.55), transparent 28%),
+    #f3f8fa;
   color: #163044;
-  border-radius: 18px;
-  padding: 1.6rem 1.5rem 1.4rem;
+  border-radius: 22px;
+  padding: 1.85rem 1.7rem 1.35rem;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.7) inset,
+    0 28px 60px rgba(2, 18, 22, 0.28);
 }
-.login-story .kicker { color: #1c6e90; }
+.login-story .kicker {
+  color: #1a7394;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+}
 .login-story h2 {
-  margin: 0.35rem 0 0.75rem;
-  color: #163044;
+  margin: 0.45rem 0 0.85rem;
+  color: #122838;
   font-family: Fraunces, Palatino, Georgia, serif;
-  font-weight: 560;
-  font-size: clamp(2.6rem, 4vw, 3.6rem);
-  line-height: 0.95;
-  letter-spacing: -0.03em;
+  font-weight: 650;
+  font-size: clamp(2.85rem, 4.4vw, 4rem);
+  line-height: 0.9;
+  letter-spacing: -0.035em;
 }
-.login-lead { color: #3d5568; font-size: 1.02rem; line-height: 1.45; max-width: 36rem; }
+.login-lead {
+  color: #3d5568;
+  font-size: 1.02rem;
+  line-height: 1.5;
+  max-width: 34rem;
+}
 .login-books {
   list-style: none;
   padding: 0;
-  margin: 1.15rem 0 0.9rem;
+  margin: 1.35rem 0 0;
   display: grid;
-  gap: 0.55rem;
+  gap: 0.6rem;
 }
 .login-books li {
   display: grid;
   grid-template-columns: auto 1fr;
-  column-gap: 0.85rem;
-  row-gap: 0.05rem;
-  padding: 0.7rem 0.85rem;
-  background: #d3ebf2;
-  border: 1px solid #9ec9d6;
-  border-radius: 8px;
+  column-gap: 0.9rem;
+  row-gap: 0.08rem;
+  align-content: center;
+  padding: 0.72rem 0.95rem;
+  background: #d7eef3;
+  border: 1px solid rgba(28, 110, 144, 0.16);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.65);
 }
 .login-books span {
   grid-row: span 2;
   align-self: center;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
-  color: #1c6e90;
+  color: #1a7394;
   font-weight: 500;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
 }
-.login-books strong { font-family: Fraunces, Palatino, Georgia, serif; font-weight: 560; font-size: 1.15rem; }
-.login-books em { font-style: normal; color: #3d5568; font-size: 0.9rem; }
-.login-story .hint { color: #3d5568; margin: 0; }
+.login-books strong { font-family: Fraunces, Palatino, Georgia, serif; font-weight: 560; font-size: 1.18rem; color: #122838; }
+.login-books em { font-style: normal; color: #4a6274; font-size: 0.9rem; }
+.login-story .hint {
+  color: #4a6274;
+  margin: 1.05rem 0 0;
+  padding-top: 0.9rem;
+  border-top: 1px solid rgba(28, 110, 144, 0.16);
+  font-size: 0.84rem;
+}
 .login-panel {
   display: flex;
   flex-direction: column;
@@ -135,13 +163,15 @@ main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
   text-align: center;
 }
 .login-mark {
-  width: 7.4rem;
-  height: 7.4rem;
-  margin-bottom: 1.35rem;
+  width: 6.6rem;
+  height: 6.6rem;
+  margin-bottom: 1.05rem;
   border-radius: 50%;
   object-fit: cover;
   background: transparent;
-  box-shadow: 0 0 36px 8px rgba(186, 255, 244, 0.22);
+  box-shadow:
+    0 0 0 7px rgba(255,255,255,0.06),
+    0 16px 36px rgba(0, 0, 0, 0.28);
 }
 .login-panel h2 {
   margin: 0;
@@ -151,25 +181,31 @@ main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
   font-size: 1.85rem;
   letter-spacing: -0.03em;
 }
-.login-please { margin: 0.35rem 0 1.35rem; color: #f3fbfb; font-size: 1.02rem; }
+.login-please { margin: 0.3rem 0 1.15rem; color: rgba(243, 251, 251, 0.86); font-size: 1rem; }
 .login-card,
 .entra-fold[open] form,
 .entra-fold.entra-primary form {
   width: 100%;
   text-align: left;
-  background: rgba(7, 28, 34, 0.62);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  padding: 1.05rem 1.05rem 1.15rem;
-  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.22);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.06), transparent 22%),
+    rgba(6, 24, 30, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  padding: 1rem 1.05rem 1.15rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    0 24px 50px rgba(0, 0, 0, 0.28);
 }
 .login-screen label {
   margin-top: 0.85rem;
-  font-size: 0.92rem;
-  letter-spacing: 0;
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
   text-transform: none;
-  color: #e7f3f3;
+  color: rgba(231, 243, 243, 0.88);
 }
+.login-card > label:first-child { margin-top: 0.15rem; }
 .label-row {
   display: flex;
   justify-content: space-between;
@@ -200,11 +236,19 @@ main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
 }
 .login-screen .field-icon input {
   margin-top: 0;
-  padding: 0.72rem 0.7rem 0.72rem 2.25rem;
+  padding: 0.78rem 0.75rem 0.78rem 2.35rem;
   border: 0;
-  border-radius: 8px;
-  background: #f4f7f8;
+  border-radius: 10px;
+  background: #f7fafb;
   color: #16323a;
+  box-shadow: inset 0 1px 2px rgba(16, 40, 51, 0.06);
+}
+.login-screen .field-icon input::placeholder { color: #8aa0a8; }
+.login-screen .field-icon input:focus-visible,
+.login-card button[type="submit"]:focus-visible,
+.entra-fold button[type="submit"]:focus-visible {
+  outline: 2px solid #7dfff0;
+  outline-offset: 2px;
 }
 .login-screen .field-secret input { padding-right: 4.6rem; }
 .field-secret button {
@@ -234,18 +278,21 @@ main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
 .login-card button[type="submit"],
 .entra-fold button[type="submit"] {
   width: 100%;
-  margin-top: 1rem;
-  padding: 0.78rem 0.9rem;
+  margin-top: 1.05rem;
+  padding: 0.82rem 0.9rem;
   border: 0;
   border-radius: 999px;
   background: #fff;
-  color: #17323a;
+  color: #143038;
   font-weight: 650;
+  letter-spacing: -0.01em;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.16);
 }
+.login-card button[type="submit"]:hover,
+.entra-fold button[type="submit"]:hover { background: #f3fffc; }
 .login-card button[type="submit"]:disabled,
 .entra-fold button[type="submit"]:disabled { opacity: 0.65; cursor: progress; }
-.login-screen .hint { font-size: 0.92rem; }
-.login-legal { margin: 1.1rem 0 0; color: rgba(232, 244, 244, 0.72); font-size: 0.78rem; }
+.login-legal { margin: 1.15rem 0 0; color: rgba(232, 244, 244, 0.62); font-size: 0.75rem; letter-spacing: 0.02em; }
 .entra-fold {
   width: 100%;
   margin-top: 0.35rem;
@@ -263,7 +310,7 @@ main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
   color: #e7f4f4;
 }
 .entra-fold summary::-webkit-details-marker { display: none; }
-.entra-fold .hint { color: #d5e7e8; }
+.entra-fold .hint { color: #d5e7e8; font-size: 0.88rem; }
 .entra-fold .fold-title { font-size: 0.95rem; }
 .entra-fold .fold-action { font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: #9fd4cc; }
 .entra-fold .fold-action::before { content: "Open"; }
@@ -631,8 +678,10 @@ footer { padding: 1.5rem 1.25rem 2rem; color: var(--ink-soft); font-size: 0.82re
   .desk-bar, .mast, .signoff, .pin-grid, .entra-admin { flex-direction: column; display: flex; }
   .signoff, .pin-grid, .rotation, .handover-post, .calendar-list, .calendar-forms { display: grid; grid-template-columns: 1fr; }
   .mast-meta { text-align: left; }
-  .login-screen { width: min(100% - 1.25rem, 40rem); grid-template-columns: 1fr; gap: 1.5rem; padding-top: 1.25rem; }
-  .login-story h2 { font-size: 2.35rem; }
+  .login-screen { width: min(100% - 1.25rem, 40rem); grid-template-columns: 1fr; gap: 1.75rem; padding-top: 1.25rem; }
+  .login-story { padding: 1.4rem 1.2rem 1.15rem; }
+  .login-story h2 { font-size: 2.45rem; }
+  .login-story .hint { margin-top: 1rem; }
   .login-panel h2 { font-size: 1.55rem; }
   .card, .login-stack, dialog { width: 100%; }
 }
