@@ -194,14 +194,8 @@ main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
 }
 .login-card button[type="submit"]:disabled,
 .entra-fold button[type="submit"]:disabled { opacity: 0.65; cursor: progress; }
-.login-closed {
-  max-width: 22rem;
-  margin: 1.35rem 0 0;
-  color: #f4fbfb;
-  font-size: 0.95rem;
-  line-height: 1.45;
-}
 .login-screen .hint { color: #d5e7e8; font-size: 0.82rem; }
+.login-screen #domain-hint { margin-top: 1.15rem; }
 .login-legal { margin: 1.1rem 0 0; color: rgba(232, 244, 244, 0.72); font-size: 0.78rem; }
 .entra-fold {
   width: 100%;
