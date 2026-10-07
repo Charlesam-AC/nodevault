@@ -8,6 +8,9 @@ function cellKey(channel, code, kind) {
 }
 
 function inOrOut(entry) {
+  if (entry.accountingLabel === 'CIT In' || entry.accountingLabel === 'CIT Out') {
+    return entry.accountingLabel;
+  }
   if (entry.flowDirection === 'IN') return 'In';
   if (entry.flowDirection === 'OUT') return 'Out';
   return entry.accountingLabel;

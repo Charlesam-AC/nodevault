@@ -799,6 +799,16 @@ function renderEntry(view) {
   }
 }
 
+function entryMovement() {
+  const choice = document.getElementById('entry-flow').value;
+  if (choice === 'CIT_IN') return { flow_direction: 'IN', accounting_label: 'CIT In' };
+  if (choice === 'CIT_OUT') return { flow_direction: 'OUT', accounting_label: 'CIT Out' };
+  return {
+    flow_direction: choice,
+    accounting_label: document.getElementById('entry-label').value.trim(),
+  };
+}
+
 function entryPayload() {
   const amounts = {};
   for (const input of document.querySelectorAll('#entry-amounts input')) {
@@ -808,8 +818,7 @@ function entryPayload() {
     amounts[input.dataset.channel][input.dataset.code] = raw;
   }
   return {
-    flow_direction: document.getElementById('entry-flow').value,
-    accounting_label: document.getElementById('entry-label').value.trim(),
+    ...entryMovement(),
     custodian_one_initials: document.getElementById('entry-c1').value.trim(),
     custodian_two_initials: document.getElementById('entry-c2').value.trim(),
     teller_coord_initials: document.getElementById('entry-coord').value.trim(),
@@ -944,6 +953,11 @@ document.getElementById('login-form').addEventListener('submit', async (event) =
 });
 
 document.getElementById('sign-out').addEventListener('click', showLogin);
+
+document.getElementById('entry-flow').addEventListener('change', () => {
+  const movement = entryMovement();
+  document.getElementById('entry-label').value = movement.accounting_label;
+});
 
 document.getElementById('book-date').addEventListener('change', () => {
   enterDesk(document.getElementById('book-date').value).catch((error) => {
