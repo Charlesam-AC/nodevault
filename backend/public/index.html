@@ -27,64 +27,53 @@
 
   <main>
     <section id="login-view" class="login-screen">
-      <div class="login-story">
-        <p class="kicker">Branch treasury desk</p>
-        <h2>Three books. One close.</h2>
-        <p class="login-lead">Kwacha, foreign notes, and Bancs. Amounts, not pieces. The book locks only when both vault custodians and the weekly coordinator sign, and the core position matches to the ngwee.</p>
-        <ol class="login-books">
-          <li>
-            <span>01</span>
-            <strong>Kwacha</strong>
-            <em>Re-issuable notes and coins</em>
-          </li>
-          <li>
-            <span>02</span>
-            <strong>Foreign notes</strong>
-            <em>Euro, sterling, dollar, rand</em>
-          </li>
-          <li>
-            <span>03</span>
-            <strong>Bancs</strong>
-            <em>Same sheet, separate balances</em>
-          </li>
-        </ol>
-        <p class="hint" id="domain-hint"></p>
-      </div>
-      <div class="login-stack">
-        <form id="password-form" class="card login-card" hidden>
-          <p class="kicker">Directory</p>
-          <h3>Sign in</h3>
-          <p class="hint">Work email and desk password. The closing PIN is a different secret and is not accepted here.</p>
-          <label for="password-email">Work email</label>
+      <div class="login-mark" aria-hidden="true">NV</div>
+      <h2>Welcome to NodeVault</h2>
+      <p class="login-please">Please sign in</p>
+      <form id="password-form" class="login-card" hidden>
+        <label for="password-email">Work email</label>
+        <div class="field-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 7l8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
           <input id="password-email" name="email" type="email" autocomplete="username" required placeholder="name@bank" spellcheck="false">
+        </div>
+        <div class="label-row">
           <label for="password">Password</label>
-          <div class="field-secret">
-            <input id="password" name="password" type="password" autocomplete="current-password" required>
-            <button type="button" id="toggle-password" aria-pressed="false" aria-controls="password">Show</button>
-          </div>
-          <p id="password-error" class="error" role="alert"></p>
-          <button type="submit">Sign in</button>
-        </form>
-        <details id="entra-fold" class="entra-fold">
-          <summary>
-            <span>
-              <span class="kicker">Corporate</span>
-              <span class="fold-title">Microsoft Entra</span>
-            </span>
-            <span class="fold-action"></span>
-          </summary>
-          <form id="login-form">
-            <p class="hint" id="entra-hint">Use the bank directory assertion for this deployment.</p>
-            <label for="email">Work email</label>
+          <button type="button" id="forgot-password">Forgot password?</button>
+        </div>
+        <div class="field-icon field-secret">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          <button type="button" id="toggle-password" aria-pressed="false" aria-controls="password">Show</button>
+        </div>
+        <p id="forgot-note" class="forgot-note" hidden>Ask an administrator to reset the desk password. The closing PIN will not sign you in.</p>
+        <p id="password-error" class="error" role="alert"></p>
+        <button type="submit">Log in</button>
+      </form>
+      <p class="login-closed">Account creation is currently closed. Contact an administrator for access.</p>
+      <p class="hint" id="domain-hint"></p>
+      <details id="entra-fold" class="entra-fold">
+        <summary>
+          <span class="fold-title">Microsoft Entra</span>
+          <span class="fold-action"></span>
+        </summary>
+        <form id="login-form">
+          <p class="hint" id="entra-hint">Use the bank directory assertion for this deployment.</p>
+          <label for="email">Work email</label>
+          <div class="field-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 7l8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
             <input id="email" name="email" type="email" autocomplete="username" required placeholder="name@bank" spellcheck="false">
-            <label for="assertion">Entra assertion</label>
+          </div>
+          <label for="assertion">Entra assertion</label>
+          <div class="field-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
             <input id="assertion" name="assertion" type="password" autocomplete="current-password" required>
-            <p id="login-error" class="error" role="alert"></p>
-            <button type="submit">Enter with Entra</button>
-            <button type="button" id="show-break-glass" class="ghost">Emergency break-glass</button>
-          </form>
-        </details>
-      </div>
+          </div>
+          <p id="login-error" class="error" role="alert"></p>
+          <button type="submit">Enter with Entra</button>
+          <button type="button" id="show-break-glass" class="ghost">Emergency break-glass</button>
+        </form>
+      </details>
+      <p class="login-legal">© 2026 NodeVault · Charles Amulike</p>
     </section>
 
     <section id="desk-view" hidden>

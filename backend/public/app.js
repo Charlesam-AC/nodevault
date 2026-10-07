@@ -665,6 +665,12 @@ async function submitSignIn(form, error, request) {
   }
 }
 
+document.getElementById('forgot-password').addEventListener('click', () => {
+  const note = document.getElementById('forgot-note');
+  note.hidden = !note.hidden;
+  if (!note.hidden) note.focus?.();
+});
+
 document.getElementById('toggle-password').addEventListener('click', () => {
   const input = document.getElementById('password');
   const button = document.getElementById('toggle-password');
