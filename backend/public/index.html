@@ -282,9 +282,16 @@
         </label>
         <div id="book-tabs" class="book-tabs" role="tablist" aria-label="Treasury books"></div>
         <button type="button" id="open-close" disabled>Three-person close</button>
-        <div class="sheet-view">
-          <button type="button" id="sheet-expand" aria-pressed="false">Expand</button>
-          <button type="button" id="sheet-fullscreen" aria-pressed="false">Full screen</button>
+        <div class="desk-actions">
+          <div class="sheet-pages" role="navigation" aria-label="Sheet pages">
+            <button type="button" id="sheet-prev" disabled>Previous</button>
+            <span id="sheet-page-label">Lines 1–30</span>
+            <button type="button" id="sheet-next" disabled>Next</button>
+          </div>
+          <div class="sheet-view">
+            <button type="button" id="sheet-expand" aria-pressed="false">Expand</button>
+            <button type="button" id="sheet-fullscreen" aria-pressed="false">Full screen</button>
+          </div>
         </div>
       </div>
       <p id="desk-status" class="status" role="status"></p>

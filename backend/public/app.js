@@ -1,4 +1,5 @@
 const REQUIRED = ['KWACHA_TREASURY', 'FOREIGN_CURRENCY', 'BANCS_TREASURY'];
+const LINES_PER_PAGE = 30;
 const state = {
   token: sessionStorage.getItem('nodevault_token') || '',
   me: null,
@@ -10,6 +11,7 @@ const state = {
   businessDate: '',
   dates: [],
   amendingLine: null,
+  sheetPage: 1,
 };
 
 const loginView = document.getElementById('login-view');
@@ -54,6 +56,61 @@ function columnClasses(column, index, size) {
   return classes.join(' ');
 }
 
+function sheetPageCount(lastLine) {
+  const last = Number(lastLine) || 0;
+  return Math.max(1, Math.ceil(last / LINES_PER_PAGE));
+}
+
+function pageForLine(lineNumber) {
+  const line = Number(lineNumber);
+  if (!Number.isInteger(line) || line < 1) return 1;
+  return Math.ceil(line / LINES_PER_PAGE);
+}
+
+function lastSheetLine(rows) {
+  return (rows || []).reduce((max, row) => Math.max(max, Number(row.line_number) || 0), 0);
+}
+
+function sheetPageLabel(page, pages, rows) {
+  if (!rows.length) return 'No lines';
+  const startLine = (page - 1) * LINES_PER_PAGE + 1;
+  const endLine = page * LINES_PER_PAGE;
+  const shown = rows
+    .map((row) => Number(row.line_number))
+    .filter((line) => line >= startLine && line <= endLine)
+    .sort((a, b) => a - b);
+  if (!shown.length) return `No lines · Page ${page} of ${pages}`;
+  const first = shown[0];
+  const last = shown[shown.length - 1];
+  const span = first === last ? `Line ${first}` : `Lines ${first}–${last}`;
+  return `${span} · Page ${page} of ${pages}`;
+}
+
+function syncSheetPager(view) {
+  const rows = view?.rows || [];
+  const pages = sheetPageCount(lastSheetLine(rows));
+  let page = Number(state.sheetPage) || 1;
+  if (page < 1) page = 1;
+  if (page > pages) page = pages;
+  state.sheetPage = page;
+  const label = document.getElementById('sheet-page-label');
+  const prev = document.getElementById('sheet-prev');
+  const next = document.getElementById('sheet-next');
+  if (label) label.textContent = sheetPageLabel(page, pages, rows);
+  if (prev) prev.disabled = page <= 1;
+  if (next) next.disabled = page >= pages;
+  return page;
+}
+
+function rowsOnSheetPage(rows, page) {
+  const startLine = (page - 1) * LINES_PER_PAGE + 1;
+  const endLine = page * LINES_PER_PAGE;
+  return rows.filter((row) => {
+    const line = Number(row.line_number);
+    return line >= startLine && line <= endLine;
+  });
+}
+
 function renderSpread(view) {
   const table = document.getElementById('ledger');
   const title = document.getElementById('sheet-title');
@@ -95,15 +152,17 @@ function renderSpread(view) {
   const thead = document.createElement('thead');
   thead.append(headGroups, headCols);
   const tbody = document.createElement('tbody');
-  if (!view.rows.length) {
+  const page = syncSheetPager(view);
+  const pageRows = rowsOnSheetPage(view.rows, page);
+  if (!pageRows.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = flat.length;
-    td.textContent = 'No lines on this book yet.';
+    td.textContent = view.rows.length ? 'No lines on this page.' : 'No lines on this book yet.';
     tr.appendChild(td);
     tbody.appendChild(tr);
   }
-  for (const row of view.rows) {
+  for (const row of pageRows) {
     const tr = document.createElement('tr');
     tr.dataset.label = row.accounting_label;
     for (const column of flat) {
@@ -194,9 +253,12 @@ function fillSelect(select, users, preferredRole) {
   }
 }
 
-async function openBook(bookId) {
+async function openBook(bookId, options = {}) {
   const status = document.getElementById('desk-status');
   status.textContent = 'Pulling the vault book…';
+  const sameBook = Number(state.book?.book?.book_id) === Number(bookId);
+  if (options.focusLine) state.sheetPage = pageForLine(options.focusLine);
+  else if (!sameBook) state.sheetPage = 1;
   try {
     const view = await api(`/api/books/${bookId}`);
     state.book = view;
@@ -1500,14 +1562,14 @@ document.getElementById('entry-form').addEventListener('submit', async (event) =
         method: 'PATCH',
         body: JSON.stringify(payload),
       });
-      await openBook(state.book.book.book_id);
+      await openBook(state.book.book.book_id, { focusLine: amending });
       document.getElementById('desk-status').textContent = `Line ${amending} is amended.`;
     } else {
       const result = await api(`/api/books/${state.book.book.book_id}/entries`, {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      await openBook(state.book.book.book_id);
+      await openBook(state.book.book.book_id, { focusLine: result.lineNumber });
       document.getElementById('desk-status').textContent = `Line ${result.lineNumber} is on the sheet.`;
     }
   } catch (err) {
@@ -1531,7 +1593,7 @@ document.getElementById('entry-square').addEventListener('click', async () => {
       method: 'POST',
       body: JSON.stringify(entryPayload()),
     });
-    await openBook(state.book.book.book_id);
+    await openBook(state.book.book.book_id, { focusLine: result.lineNumber });
     document.getElementById('desk-status').textContent = `Bal c/d is line ${result.lineNumber}. The sheet squares.`;
   } catch (err) {
     error.textContent = err.message;
@@ -1643,6 +1705,24 @@ if (themeSelect) {
   applyLedgerTheme(sessionStorage.getItem('ledger-theme') || 'paper');
   themeSelect.addEventListener('change', () => applyLedgerTheme(themeSelect.value));
 }
+
+function turnSheetPage(step) {
+  if (!state.book) return;
+  const pages = sheetPageCount(lastSheetLine(state.book.rows));
+  const next = Math.min(pages, Math.max(1, state.sheetPage + step));
+  if (next === state.sheetPage) return;
+  state.sheetPage = next;
+  renderSpread(state.book);
+  const title = document.getElementById('sheet-title');
+  const bar = document.getElementById('sheet-suspend');
+  if (title && bar) {
+    const top = title.getBoundingClientRect().top + window.scrollY - bar.getBoundingClientRect().height - 8;
+    window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  }
+}
+
+document.getElementById('sheet-prev').addEventListener('click', () => turnSheetPage(-1));
+document.getElementById('sheet-next').addEventListener('click', () => turnSheetPage(1));
 
 const ledgerPanel = document.getElementById('ledger-panel');
 const expandButton = document.getElementById('sheet-expand');
