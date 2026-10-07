@@ -357,7 +357,7 @@ function dayKind(kind) {
   if (kind === 'TENANT') return 'All branches';
   if (kind === 'PROVINCE') return 'Province';
   if (kind === 'LOCATION') return 'Town';
-  if (kind === 'BRANCH') return 'Branch';
+  if (kind === 'BRANCH') return 'One branch';
   return kind;
 }
 
@@ -395,7 +395,15 @@ function renderCalendar(calendar) {
     const span = closure.startDate === closure.endDate
       ? closure.startDate
       : `${closure.startDate} to ${closure.endDate}`;
-    items.push({ date: closure.startDate, label: `${closure.reason} · ${span}`, kind: closure.scope });
+    const codes = (closure.branches || []).map((row) => row.branchCode);
+    const where = closure.scope === 'BRANCH' && codes.length
+      ? codes.join(', ')
+      : '';
+    items.push({
+      date: closure.startDate,
+      label: where ? `${closure.reason} · ${span} · ${where}` : `${closure.reason} · ${span}`,
+      kind: closure.scope === 'BRANCH' && codes.length > 1 ? `${codes.length} branches` : closure.scope,
+    });
   }
   items.sort((a, b) => a.date.localeCompare(b.date) || a.label.localeCompare(b.label));
   setFoldCount('calendar-count', items.length === 1 ? '1 day' : `${items.length} days`);
@@ -464,17 +472,33 @@ function nonWorkingDayForm(calendar) {
   heading.textContent = 'Set a non-working day';
   const hint = document.createElement('p');
   hint.className = 'fold-lead';
-  hint.textContent = 'Choose one future date and the branch it closes. The regional manager can still set a wider closure.';
-  const branch = document.createElement('select');
-  branch.id = 'day-branch';
-  branch.required = true;
-  for (const row of calendar.branches || []) {
+  hint.textContent = 'Close every branch on that date, or tick the branches it applies to.';
+  const coverage = document.createElement('select');
+  coverage.id = 'day-coverage';
+  for (const [value, label] of [
+    ['SELECTED', 'Selected branches'],
+    ['ALL', 'All branches'],
+  ]) {
     const option = document.createElement('option');
-    option.value = String(row.branchId);
-    option.textContent = `${row.branchCode} · ${row.branchName}`;
-    if (Number(calendar.homeBranchId) === Number(row.branchId)) option.selected = true;
-    branch.appendChild(option);
+    option.value = value;
+    option.textContent = label;
+    coverage.appendChild(option);
   }
+  const picks = document.createElement('div');
+  picks.id = 'day-branches';
+  picks.className = 'day-picks';
+  for (const row of calendar.branches || []) {
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.value = String(row.branchId);
+    if (Number(calendar.homeBranchId) === Number(row.branchId)) box.checked = true;
+    const label = document.createElement('label');
+    label.append(box, document.createTextNode(` ${row.branchCode} ${row.branchName}`));
+    picks.appendChild(label);
+  }
+  coverage.addEventListener('change', () => {
+    picks.hidden = coverage.value === 'ALL';
+  });
   const date = document.createElement('input');
   date.id = 'day-date';
   date.type = 'date';
@@ -494,7 +518,8 @@ function nonWorkingDayForm(calendar) {
   form.append(
     heading,
     hint,
-    field('Branch', branch),
+    field('Coverage', coverage),
+    picks,
     field('Date', date),
     field('Reason', reason),
     error,
@@ -503,12 +528,19 @@ function nonWorkingDayForm(calendar) {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     error.textContent = '';
+    const allBranches = coverage.value === 'ALL';
+    const branchIds = [...picks.querySelectorAll('input:checked')].map((box) => Number(box.value));
+    if (!allBranches && !branchIds.length) {
+      error.textContent = 'Tick at least one branch, or choose all branches.';
+      return;
+    }
     button.disabled = true;
     try {
       await api('/api/calendar/non-working', {
         method: 'POST',
         body: JSON.stringify({
-          branch_id: Number(branch.value),
+          all_branches: allBranches,
+          branch_ids: branchIds,
           non_working_date: date.value,
           reason: reason.value,
         }),

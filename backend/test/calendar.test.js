@@ -358,4 +358,34 @@ test('the master admin can set one non-working day, and a frozen IT admin cannot
   assert.equal(await closed(applicationPool, desk.tenantId, kitwe, '2026-11-12'), false);
   await cancelClosure(applicationPool, admin, day.closureId);
   assert.equal(await closed(applicationPool, desk.tenantId, desk.branchId, '2026-11-12'), false);
+
+  await assert.rejects(
+    () => declareNonWorkingDay(applicationPool, admin, {
+      branch_ids: [],
+      non_working_date: '2026-11-13',
+      reason: 'No branch ticked',
+    }),
+    (error) => error instanceof VaultError && error.code === 'CLOSURE_SCOPE',
+  );
+  const selected = await declareNonWorkingDay(applicationPool, admin, {
+    branch_ids: [desk.branchId, kitwe],
+    non_working_date: '2026-11-13',
+    reason: 'Two branches closed',
+  });
+  assert.equal(await closed(applicationPool, desk.tenantId, desk.branchId, '2026-11-13'), true);
+  assert.equal(await closed(applicationPool, desk.tenantId, kitwe, '2026-11-13'), true);
+  assert.deepEqual(selected.branchIds.sort((a, b) => a - b), [desk.branchId, kitwe].sort((a, b) => a - b));
+  await cancelClosure(applicationPool, admin, selected.closureId);
+
+  const every = await declareNonWorkingDay(applicationPool, admin, {
+    all_branches: true,
+    non_working_date: '2026-11-16',
+    reason: 'Bank-wide stocktake',
+  });
+  assert.equal(every.scope, 'TENANT');
+  assert.equal(await closed(applicationPool, desk.tenantId, desk.branchId, '2026-11-16'), true);
+  assert.equal(await closed(applicationPool, desk.tenantId, kitwe, '2026-11-16'), true);
+  await cancelClosure(applicationPool, admin, every.closureId);
+  assert.equal(await closed(applicationPool, desk.tenantId, desk.branchId, '2026-11-16'), false);
+  assert.equal(await closed(applicationPool, desk.tenantId, kitwe, '2026-11-16'), false);
 });

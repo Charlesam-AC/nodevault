@@ -190,13 +190,22 @@ async function declareClosure(db, actor, body) {
 async function declareNonWorkingDay(db, actor, body) {
   assertDayWriter(actor);
   const date = String(body.non_working_date || body.nonWorkingDate || body.date || '').trim();
-  const branchId = Number(body.branch_id || body.branchId || actor.branchId);
-  if (!Number.isInteger(branchId) || branchId <= 0) {
-    throw new VaultError('CLOSURE_SCOPE', 'Choose the branch this day applies to');
+  const allBranches = body.all_branches === true || body.scope === 'TENANT';
+  if (allBranches) {
+    return writeClosure(db, actor, {
+      scope: 'TENANT',
+      startDate: date,
+      endDate: date,
+      reason: body.reason,
+    });
   }
+  const listed = body.branch_ids || body.branchIds;
+  const branchIds = Array.isArray(listed)
+    ? listed
+    : [body.branch_id || body.branchId || actor.branchId];
   return writeClosure(db, actor, {
     scope: 'BRANCH',
-    branchIds: [branchId],
+    branchIds,
     startDate: date,
     endDate: date,
     reason: body.reason,

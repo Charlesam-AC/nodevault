@@ -1044,12 +1044,36 @@ footer { padding: 1.5rem 1.25rem 2rem; color: #ffffff; font-size: 0.82rem; }
 .day-cancel { margin-top: 0.85rem; }
 .day-cancel p { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; margin-top: 0.4rem; color: #102833; }
 #day-error:empty { display: none; margin: 0; padding: 0; min-height: 0; }
+.day-picks {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.25rem 0.8rem;
+  max-height: 11rem;
+  overflow: auto;
+  margin-top: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #d5e3ea;
+  border-radius: 10px;
+  background: #ffffff;
+}
+.day-picks label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  color: #102833;
+  font-size: 0.86rem;
+}
+@media (min-width: 720px) {
+  .day-picks { grid-template-columns: 1fr 1fr; }
+}
 @media (min-width: 860px) {
   .day-tools { grid-template-columns: 1fr 1fr; }
   .day-form { grid-template-columns: 1fr 1fr; }
   .day-form h4,
   .day-form .fold-lead,
   .day-form .error,
+  .day-form .day-picks,
   .day-form button { grid-column: 1 / -1; }
 }
 @media (max-width: 640px) {
