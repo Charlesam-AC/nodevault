@@ -324,24 +324,26 @@ function renderRotation(rotation) {
   const host = document.getElementById('rotation-panel');
   host.replaceChildren();
   for (const post of rotation.posts || []) {
+    const held = post.current && !post.current.unassigned;
     const card = document.createElement('article');
-    card.className = 'rounded border border-gray-200 bg-white px-4 py-3 shadow-sm';
+    card.className = 'seat-card';
     const title = document.createElement('h3');
-    title.className = 'text-sm font-semibold text-gray-900';
+    title.className = 'seat-kicker';
     title.textContent = post.label;
     const holder = document.createElement('p');
-    holder.className = 'mt-2 text-sm text-gray-800';
-    holder.textContent = post.current && !post.current.unassigned
-      ? `${post.current.fullLegalName} | ${post.current.employeeId} (${post.current.initials})`
-      : 'No holder for this period | -';
+    holder.className = 'seat-name';
+    holder.textContent = held ? post.current.fullLegalName : 'No holder for this period';
+    const meta = document.createElement('p');
+    meta.className = 'seat-meta';
+    meta.textContent = held ? `${post.current.employeeId} · ${post.current.initials}` : 'Unassigned';
     const dates = document.createElement('p');
-    dates.className = 'mt-1 text-sm text-gray-600';
+    dates.className = 'seat-dates';
     const span = post.current || post.next;
     dates.textContent = span ? `${span.periodStart} to ${span.periodEnd}` : '';
     const cadence = document.createElement('p');
-    cadence.className = 'mt-2 text-sm text-gray-700';
-    cadence.textContent = `Rotates: ${cadenceLabel(post)}`;
-    card.append(title, holder, dates, cadence);
+    cadence.className = 'seat-cadence';
+    cadence.textContent = cadenceLabel(post);
+    card.append(title, holder, meta, dates, cadence);
     host.appendChild(card);
   }
 }
@@ -350,6 +352,14 @@ function field(labelText, control) {
   const label = document.createElement('label');
   label.textContent = labelText;
   label.appendChild(control);
+  return label;
+}
+
+function labeledField(labelText, control) {
+  const label = document.createElement('label');
+  const caption = document.createElement('span');
+  caption.textContent = labelText;
+  label.append(caption, control);
   return label;
 }
 
@@ -799,71 +809,71 @@ function renderHandover(rotation, deskOpen) {
     return;
   }
   host.hidden = false;
+  const kicker = document.createElement('p');
+  kicker.className = 'desk-kicker';
+  kicker.textContent = 'Rotation';
   const title = document.createElement('h3');
-  title.className = 'text-base font-semibold text-gray-900';
+  title.className = 'desk-title';
   title.textContent = deskOpen
     ? `Handover due ${rotation.dueDate}`
     : 'This cycle stays shut until handover is acknowledged';
-  host.append(title);
+  host.append(kicker, title);
   const form = document.createElement('form');
   form.id = 'handover-form';
-  form.className = 'mt-3';
+  form.className = 'handover-form';
   for (const post of due) {
     const block = document.createElement('div');
-    block.className = 'handover-post mt-3 grid gap-3';
+    block.className = 'handover-post';
     block.dataset.post = post.postCode;
     const row = document.createElement('div');
-    row.className = 'grid gap-3 md:grid-cols-2';
+    row.className = 'handover-grid';
     const candidates = state.directory.filter((user) => user.system_role === post.role && user.user_id !== post.outgoing?.userId);
     const select = document.createElement('select');
     select.dataset.field = 'incoming';
-    select.className = 'h-10 rounded border border-gray-300 bg-white px-2 text-sm text-gray-800';
     for (const user of candidates) {
       const option = document.createElement('option');
       option.value = user.user_id;
-      option.textContent = `${user.full_legal_name}: ${user.employee_id} | ${user.two_letter_initials}`;
+      option.textContent = `${user.full_legal_name} · ${user.employee_id} · ${user.two_letter_initials}`;
       option.dataset.employeeId = user.employee_id;
       option.dataset.initials = user.two_letter_initials;
       select.appendChild(option);
     }
     const outgoing = document.createElement('input');
     outgoing.readOnly = true;
-    outgoing.className = 'h-10 rounded border border-gray-300 bg-gray-50 px-3 text-sm text-gray-700';
-    const outgoingName = post.postCode === 'HEAD_TELLER' ? 'Outgoing Coordinator' : 'Outgoing custodian';
-    outgoing.value = post.outgoing
-      ? `${outgoingName}: ${post.outgoing.initials}`
-      : 'Outgoing holder is not on the calendar';
+    const outgoingName = post.postCode === 'HEAD_TELLER' ? 'Outgoing coordinator' : 'Outgoing custodian';
+    outgoing.value = post.outgoing ? post.outgoing.initials : 'Not on the calendar';
     const pins = document.createElement('div');
-    pins.className = 'grid gap-3 md:grid-cols-2';
+    pins.className = 'handover-grid';
     const outgoingPin = document.createElement('input');
     outgoingPin.type = 'password';
-    outgoingPin.placeholder = 'Outgoing closing PIN';
     outgoingPin.autocomplete = 'off';
     outgoingPin.required = true;
     outgoingPin.dataset.field = 'outgoing-pin';
-    outgoingPin.className = 'h-10 rounded border border-gray-300 px-3 text-sm';
     const incomingPin = document.createElement('input');
     incomingPin.type = 'password';
-    incomingPin.placeholder = 'Incoming closing PIN';
     incomingPin.autocomplete = 'off';
     incomingPin.required = true;
     incomingPin.dataset.field = 'incoming-pin';
-    incomingPin.className = 'h-10 rounded border border-gray-300 px-3 text-sm';
-    pins.append(outgoingPin, incomingPin);
-    row.append(select, outgoing);
+    pins.append(
+      labeledField('Outgoing closing PIN', outgoingPin),
+      labeledField('Incoming closing PIN', incomingPin),
+    );
+    row.append(
+      labeledField('Incoming holder', select),
+      labeledField(outgoingName, outgoing),
+    );
     block.append(row, pins);
     form.appendChild(block);
   }
   const error = document.createElement('p');
   error.id = 'handover-error';
-  error.className = 'error mt-3 flex items-start gap-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700';
+  error.className = 'error';
   error.setAttribute('role', 'alert');
   const actions = document.createElement('div');
-  actions.className = 'mt-3 flex justify-end';
+  actions.className = 'handover-actions';
   const button = document.createElement('button');
   button.type = 'submit';
-  button.className = '!mt-0 rounded bg-[#102833] px-4 py-2 text-sm font-medium text-white';
-  button.textContent = 'Acknowledge Handover';
+  button.textContent = 'Acknowledge handover';
   form.append(error, actions);
   actions.appendChild(button);
   form.addEventListener('submit', submitHandover);
@@ -1494,8 +1504,11 @@ function renderEntry(view) {
       input.dataset.channel = column.channel;
       input.dataset.code = column.code;
       input.setAttribute('aria-label', `${group.label} ${column.header}`);
+      const caption = document.createElement('span');
+      caption.className = 'entry-denom';
+      caption.textContent = column.header;
       const label = document.createElement('label');
-      label.append(document.createTextNode(column.header), input);
+      label.append(caption, input);
       grid.appendChild(label);
     }
     block.append(title, grid);

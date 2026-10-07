@@ -110,28 +110,31 @@
 
     <section id="desk-view" hidden>
       <div id="maintenance-banner" class="banner" hidden></div>
-      <section id="act-as" hidden class="mb-3 rounded border border-[#d5e6ea] bg-[#e7f5f7] px-4 py-3">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <p class="flex items-start gap-2 text-sm leading-5 text-[#1d4e58]">
-            <svg id="acting-icon" hidden viewBox="0 0 20 20" class="mt-0.5 h-4 w-4 shrink-0 fill-[#1d6f86]" aria-hidden="true"><path d="M10 1.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Zm.75 12.25h-1.5v-5h1.5v5Zm0-6.5h-1.5V5.75h1.5V7.25Z"/></svg>
+      <section id="act-as" hidden class="desk-card">
+        <div class="desk-card-row">
+          <p class="desk-lead">
+            <svg id="acting-icon" hidden viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Zm.75 12.25h-1.5v-5h1.5v5Zm0-6.5h-1.5V5.75h1.5V7.25Z"/></svg>
             <span id="acting-copy"></span>
           </p>
-          <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <select id="act-as-user" class="mt-0 h-9 w-full rounded border border-gray-300 bg-white px-2 text-sm text-gray-800 sm:w-80"></select>
-            <button type="button" id="act-as-open" class="h-9 shrink-0 rounded bg-[#102833] px-3 text-sm font-medium text-white">Test as this person</button>
-            <button type="button" id="acting-exit" hidden class="h-9 shrink-0 rounded border border-gray-300 bg-white px-3 text-sm text-gray-800">Exit Simulation</button>
+          <div class="desk-card-actions">
+            <select id="act-as-user" aria-label="Staff member to test as"></select>
+            <button type="button" id="act-as-open">Test as this person</button>
+            <button type="button" id="acting-exit" hidden>Exit simulation</button>
           </div>
         </div>
-        <p id="act-as-error" class="error text-sm text-red-700" role="alert"></p>
+        <p id="act-as-error" class="error" role="alert"></p>
       </section>
-      <section id="entra-admin" hidden class="mb-3 flex flex-col gap-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h3 class="text-base font-semibold text-gray-900">Microsoft Entra</h3>
-          <p id="entra-admin-copy" class="mt-1 max-w-3xl text-sm text-gray-600"></p>
+      <section id="entra-admin" hidden class="desk-card">
+        <div class="desk-card-row">
+          <div>
+            <p class="desk-kicker">Directory</p>
+            <h3 class="desk-title">Microsoft Entra</h3>
+            <p id="entra-admin-copy" class="desk-lead"></p>
+          </div>
+          <button type="button" id="entra-toggle" role="switch" aria-pressed="true" aria-label="Microsoft Entra">
+            <span></span>
+          </button>
         </div>
-        <button type="button" id="entra-toggle" role="switch" aria-pressed="true" class="relative h-6 w-11 shrink-0 rounded-full border-0 bg-slate-800 p-0">
-          <span class="pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 translate-x-5 rounded-full bg-white shadow transition-transform"></span>
-        </button>
       </section>
       <section id="branch-panel" hidden class="fold" aria-label="Branches">
         <button type="button" class="fold-toggle" aria-expanded="true" aria-controls="branch-body">
@@ -302,8 +305,8 @@
         </button>
         <div id="calendar-body" class="fold-body"></div>
       </section>
-      <section id="rotation-panel" class="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3" aria-label="Post rotation"></section>
-      <section id="handover-panel" hidden class="mb-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm"></section>
+      <section id="rotation-panel" aria-label="Post rotation"></section>
+      <section id="handover-panel" hidden></section>
       <p id="carry-flags" class="error"></p>
       <div id="ledger-panel">
       <div id="sheet-suspend">
@@ -352,12 +355,13 @@
       </div>
       <section id="entry-panel" class="entry-panel" hidden>
         <div class="entry-head">
+          <p class="desk-kicker">Open book</p>
           <h3 id="entry-title">Write a line</h3>
           <p id="entry-note" class="hint"></p>
         </div>
         <form id="entry-form">
           <div class="entry-meta">
-            <label>In or out
+            <label><span>In or out</span>
               <select id="entry-flow">
                 <option value="CIT_IN">CIT In</option>
                 <option value="CIT_OUT">CIT Out</option>
@@ -365,16 +369,16 @@
                 <option value="OUT">Out</option>
               </select>
             </label>
-            <label>Reference
+            <label><span>Reference</span>
               <input id="entry-label" maxlength="32" required value="CIT In" autocomplete="off">
             </label>
-            <label>Custodian 1
+            <label><span>Custodian 1</span>
               <input id="entry-c1" maxlength="8" required autocomplete="off">
             </label>
-            <label>Custodian 2
+            <label><span>Custodian 2</span>
               <input id="entry-c2" maxlength="8" required autocomplete="off">
             </label>
-            <label>Head teller
+            <label><span>Head teller</span>
               <input id="entry-coord" maxlength="8" required autocomplete="off">
             </label>
           </div>
