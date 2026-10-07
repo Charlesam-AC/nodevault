@@ -14,6 +14,7 @@ const {
   optionsForBranch,
   calendarDesk,
   declareClosure,
+  declareNonWorkingDay,
   cancelClosure,
   declareGazetted,
   cancelGazetted,
@@ -276,6 +277,11 @@ function buildApp(db) {
 
   app.post('/api/calendar/closures', guard, asyncRoute(async (req, res) => {
     const created = await declareClosure(db, req.user, req.body);
+    res.status(201).json(created);
+  }));
+
+  app.post('/api/calendar/non-working', guard, asyncRoute(async (req, res) => {
+    const created = await declareNonWorkingDay(db, req.user, req.body || {});
     res.status(201).json(created);
   }));
 

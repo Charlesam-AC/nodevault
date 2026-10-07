@@ -5,6 +5,7 @@ const { easterSunday, zambiaHolidays, holidayDates } = require('../services/zamb
 const { isBusinessDay } = require('../services/calendar');
 const {
   declareClosure,
+  declareNonWorkingDay,
   cancelClosure,
   declareGazetted,
   cancelGazetted,
@@ -291,4 +292,70 @@ test('a branch closure stays local, a tenant closure covers every branch, and a 
   );
   assert.equal(copperbelt.priorBusinessDate, '2026-09-30');
   assert.deepEqual(copperbelt.results.map((row) => row.status), ['POSTED', 'POSTED', 'POSTED']);
+});
+
+test('the master admin can set one non-working day, and a frozen IT admin cannot', async () => {
+  const { applicationPool } = pools();
+  const desk = await createDesk(pinHash, { withBooks: false });
+  const inserted = await applicationPool.query(
+    `INSERT INTO nodevault_users (
+       tenant_id, branch_id, work_email, full_legal_name, employee_id,
+       two_letter_initials, system_role, closing_pin_hash, is_active
+     ) VALUES ($1,$2,'admin@demo-bank.example','Master Admin','ADM-TEST','M.A.','IT_SUPER_ADMIN',$3,true)
+     RETURNING user_id`,
+    [desk.tenantId, desk.branchId, pinHash],
+  );
+  const admin = {
+    tenantId: desk.tenantId,
+    userId: Number(inserted.rows[0].user_id),
+    role: 'IT_SUPER_ADMIN',
+    email: 'admin@demo-bank.example',
+    branchId: desk.branchId,
+    now: AS_OF,
+  };
+  const frozen = {
+    tenantId: desk.tenantId,
+    userId: Number(desk.users.admin.user_id),
+    role: 'IT_SUPER_ADMIN',
+    email: 'it.admin@demo-bank.example',
+    branchId: desk.branchId,
+    now: AS_OF,
+  };
+  await assert.rejects(
+    () => declareNonWorkingDay(applicationPool, frozen, {
+      branch_id: desk.branchId,
+      non_working_date: '2026-11-12',
+      reason: 'Stocktake',
+    }),
+    (error) => error instanceof VaultError && error.code === 'FORBIDDEN',
+  );
+  await assert.rejects(
+    () => declareNonWorkingDay(applicationPool, { ...admin, actorUserId: desk.users.c1.user_id }, {
+      branch_id: desk.branchId,
+      non_working_date: '2026-11-12',
+      reason: 'Stocktake',
+    }),
+    (error) => error instanceof VaultError && error.code === 'FORBIDDEN',
+  );
+  await assert.rejects(
+    () => declareClosure(applicationPool, admin, {
+      scope: 'TENANT',
+      startDate: '2026-11-12',
+      endDate: '2026-11-13',
+      reason: 'Wider than one day',
+    }),
+    (error) => error instanceof VaultError && error.code === 'FORBIDDEN',
+  );
+  const day = await declareNonWorkingDay(applicationPool, admin, {
+    branch_id: desk.branchId,
+    non_working_date: '2026-11-12',
+    reason: 'Branch stocktake',
+  });
+  assert.equal(day.startDate, '2026-11-12');
+  assert.equal(day.endDate, '2026-11-12');
+  assert.equal(await closed(applicationPool, desk.tenantId, desk.branchId, '2026-11-12'), true);
+  const kitwe = await otherBranch(applicationPool, desk);
+  assert.equal(await closed(applicationPool, desk.tenantId, kitwe, '2026-11-12'), false);
+  await cancelClosure(applicationPool, admin, day.closureId);
+  assert.equal(await closed(applicationPool, desk.tenantId, desk.branchId, '2026-11-12'), false);
 });

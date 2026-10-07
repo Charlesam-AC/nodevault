@@ -133,9 +133,18 @@
           <span class="pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 translate-x-5 rounded-full bg-white shadow transition-transform"></span>
         </button>
       </section>
-      <section id="branch-panel" hidden class="mb-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm" aria-label="Branches">
-        <h3 class="text-base font-semibold text-gray-900">Branches</h3>
-        <p id="branch-copy" class="mt-1 text-sm text-gray-600"></p>
+      <section id="branch-panel" hidden class="fold" aria-label="Branches">
+        <button type="button" class="fold-toggle" aria-expanded="true" aria-controls="branch-body">
+          <span class="fold-mark" aria-hidden="true"></span>
+          <span class="fold-copy">
+            <span class="fold-kicker">Directory</span>
+            <span class="fold-title">Branches</span>
+          </span>
+          <span class="fold-count" id="branch-count"></span>
+          <span class="fold-switch"><span class="fold-word">Hide</span><span class="fold-chevron" aria-hidden="true"></span></span>
+        </button>
+        <div id="branch-body" class="fold-body">
+        <p id="branch-copy" class="fold-lead"></p>
         <form id="branch-add" hidden>
           <h4 class="staff-span">Add a branch</h4>
           <label>Branch name
@@ -191,10 +200,20 @@
             <button type="button" id="branch-edit-cancel" class="staff-quiet">Cancel</button>
           </div>
         </form>
+        </div>
       </section>
-      <section id="staff-panel" hidden class="mb-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm" aria-label="Staff register">
-        <h3 class="text-base font-semibold text-gray-900">Staff register</h3>
-        <p id="staff-copy" class="mt-1 text-sm text-gray-600"></p>
+      <section id="staff-panel" hidden class="fold" aria-label="Staff register">
+        <button type="button" class="fold-toggle" aria-expanded="true" aria-controls="staff-body">
+          <span class="fold-mark" aria-hidden="true"></span>
+          <span class="fold-copy">
+            <span class="fold-kicker">People</span>
+            <span class="fold-title">Staff register</span>
+          </span>
+          <span class="fold-count" id="staff-count"></span>
+          <span class="fold-switch"><span class="fold-word">Hide</span><span class="fold-chevron" aria-hidden="true"></span></span>
+        </button>
+        <div id="staff-body" class="fold-body">
+        <p id="staff-copy" class="fold-lead"></p>
         <form id="staff-add" hidden>
           <h4 class="staff-span">Add a person</h4>
           <label>Full name
@@ -269,8 +288,20 @@
             <button type="button" id="staff-assign-cancel" class="staff-quiet">Cancel</button>
           </div>
         </form>
+        </div>
       </section>
-      <section id="calendar-panel" class="mb-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm" aria-label="Non-working days"></section>
+      <section id="calendar-panel" class="fold" aria-label="Non-working days">
+        <button type="button" class="fold-toggle" aria-expanded="true" aria-controls="calendar-body">
+          <span class="fold-mark" aria-hidden="true"></span>
+          <span class="fold-copy">
+            <span class="fold-kicker">Calendar</span>
+            <span class="fold-title">Non-working days</span>
+          </span>
+          <span class="fold-count" id="calendar-count"></span>
+          <span class="fold-switch"><span class="fold-word">Hide</span><span class="fold-chevron" aria-hidden="true"></span></span>
+        </button>
+        <div id="calendar-body" class="fold-body"></div>
+      </section>
       <section id="rotation-panel" class="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3" aria-label="Post rotation"></section>
       <section id="handover-panel" hidden class="mb-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm"></section>
       <p id="carry-flags" class="error"></p>

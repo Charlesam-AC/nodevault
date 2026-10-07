@@ -353,22 +353,32 @@ function field(labelText, control) {
   return label;
 }
 
+function dayKind(kind) {
+  if (kind === 'TENANT') return 'All branches';
+  if (kind === 'PROVINCE') return 'Province';
+  if (kind === 'LOCATION') return 'Town';
+  if (kind === 'BRANCH') return 'Branch';
+  return kind;
+}
+
 function renderCalendar(calendar) {
-  const host = document.getElementById('calendar-panel');
+  const host = document.getElementById('calendar-body');
+  if (!host) return;
   host.replaceChildren();
-  const title = document.createElement('h3');
-  title.className = 'mb-2 text-base font-semibold text-gray-900';
-  title.textContent = 'Non-working days';
-  host.append(title);
+  const lead = document.createElement('p');
+  lead.className = 'fold-lead';
+  lead.textContent = 'Sundays and public holidays are already closed. A day set here does not open a treasury book.';
+  host.append(lead);
   if (calendar.nonWorking) {
     const note = document.createElement('p');
-    note.className = 'mb-2 text-sm text-gray-600';
+    note.className = 'day-today';
     note.textContent = `Today is not a working day (${calendar.nonWorking.name}). No new book opens.`;
     host.append(note);
   }
+  if (calendar.canSetDay) host.appendChild(nonWorkingDayForm(calendar));
 
   const list = document.createElement('ul');
-  list.className = 'grid grid-cols-1 gap-x-10 md:grid-cols-2';
+  list.className = 'day-list';
   const items = [];
   for (const holiday of calendar.holidays || []) {
     const label = holiday.observance === 'SUNDAY_FOLLOWING'
@@ -388,36 +398,47 @@ function renderCalendar(calendar) {
     items.push({ date: closure.startDate, label: `${closure.reason} · ${span}`, kind: closure.scope });
   }
   items.sort((a, b) => a.date.localeCompare(b.date) || a.label.localeCompare(b.label));
+  setFoldCount('calendar-count', items.length === 1 ? '1 day' : `${items.length} days`);
   if (!items.length) {
     const empty = document.createElement('li');
+    empty.className = 'day-empty';
     empty.textContent = 'No public holiday or closure in the next four months.';
     list.appendChild(empty);
   }
   for (const item of items) {
     const li = document.createElement('li');
-    li.className = 'flex items-baseline gap-4 border-b border-gray-200 py-2 text-sm';
+    li.className = 'day-row';
     const when = document.createElement('time');
     when.dateTime = item.date;
-    when.className = 'w-28 shrink-0 font-mono text-[13px] text-gray-800';
     when.textContent = item.date;
     const text = document.createElement('span');
-    text.className = 'text-gray-700';
-    text.textContent = `${item.label} · ${item.kind}`;
-    li.append(when, text);
+    text.className = 'day-name';
+    text.textContent = item.label;
+    const pill = document.createElement('span');
+    pill.className = 'day-pill';
+    pill.textContent = dayKind(item.kind);
+    li.append(when, text, pill);
     list.appendChild(li);
   }
   host.appendChild(list);
 
-  if (!calendar.canManage) return;
-  const forms = document.createElement('div');
-  forms.className = 'mt-4 grid gap-4 border-t border-gray-200 pt-4 md:grid-cols-2';
-  forms.append(closureForm(calendar), gazetteForm());
-  const pending = (calendar.closures || []).filter((row) => row.cancellable);
-  const gazettes = (calendar.gazetted || []).filter((row) => row.cancellable);
+  if (calendar.canManage) {
+    const forms = document.createElement('div');
+    forms.className = 'day-tools';
+    forms.append(closureForm(calendar), gazetteForm());
+    host.appendChild(forms);
+  }
+  const pending = calendar.canSetDay
+    ? (calendar.closures || []).filter((row) => row.cancellable)
+    : [];
+  const gazettes = calendar.canManage
+    ? (calendar.gazetted || []).filter((row) => row.cancellable)
+    : [];
   if (pending.length || gazettes.length) {
     const manage = document.createElement('div');
-    const heading = document.createElement('h3');
-    heading.textContent = 'Cancel before the date';
+    manage.className = 'day-cancel';
+    const heading = document.createElement('h4');
+    heading.textContent = 'Withdraw before the date';
     manage.appendChild(heading);
     for (const row of pending) {
       manage.appendChild(cancelLine(
@@ -431,9 +452,74 @@ function renderCalendar(calendar) {
         () => api(`/api/calendar/gazetted/${row.holidayId}/cancel`, { method: 'POST', body: '{}' }),
       ));
     }
-    forms.appendChild(manage);
+    host.appendChild(manage);
   }
-  host.appendChild(forms);
+}
+
+function nonWorkingDayForm(calendar) {
+  const form = document.createElement('form');
+  form.id = 'day-form';
+  form.className = 'day-form';
+  const heading = document.createElement('h4');
+  heading.textContent = 'Set a non-working day';
+  const hint = document.createElement('p');
+  hint.className = 'fold-lead';
+  hint.textContent = 'Choose one future date and the branch it closes. The regional manager can still set a wider closure.';
+  const branch = document.createElement('select');
+  branch.id = 'day-branch';
+  branch.required = true;
+  for (const row of calendar.branches || []) {
+    const option = document.createElement('option');
+    option.value = String(row.branchId);
+    option.textContent = `${row.branchCode} · ${row.branchName}`;
+    if (Number(calendar.homeBranchId) === Number(row.branchId)) option.selected = true;
+    branch.appendChild(option);
+  }
+  const date = document.createElement('input');
+  date.id = 'day-date';
+  date.type = 'date';
+  date.required = true;
+  const reason = document.createElement('input');
+  reason.id = 'day-reason';
+  reason.required = true;
+  reason.maxLength = 400;
+  reason.placeholder = 'Why this day is closed';
+  const error = document.createElement('p');
+  error.id = 'day-error';
+  error.className = 'error';
+  const button = document.createElement('button');
+  button.type = 'submit';
+  button.id = 'day-submit';
+  button.textContent = 'Set this day';
+  form.append(
+    heading,
+    hint,
+    field('Branch', branch),
+    field('Date', date),
+    field('Reason', reason),
+    error,
+    button,
+  );
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    error.textContent = '';
+    button.disabled = true;
+    try {
+      await api('/api/calendar/non-working', {
+        method: 'POST',
+        body: JSON.stringify({
+          branch_id: Number(branch.value),
+          non_working_date: date.value,
+          reason: reason.value,
+        }),
+      });
+      await enterDesk(state.businessDate || undefined);
+    } catch (err) {
+      error.textContent = err.message;
+      button.disabled = false;
+    }
+  });
+  return form;
 }
 
 function cancelLine(label, action) {
@@ -838,14 +924,17 @@ function renderStaffList() {
   const host = document.getElementById('staff-list');
   host.replaceChildren();
   const register = state.staff;
-  if (!register || !register.users.length) {
+  const people = register?.users || [];
+  const activePeople = people.filter((user) => user.is_active).length;
+  setFoldCount('staff-count', activePeople === 1 ? '1 person' : `${activePeople} people`);
+  if (!people.length) {
     const empty = document.createElement('p');
     empty.className = 'staff-meta';
     empty.textContent = 'No one is on the staff register yet.';
     host.appendChild(empty);
     return;
   }
-  for (const user of register.users) {
+  for (const user of people) {
     const card = document.createElement('article');
     card.className = `staff-card${user.is_active ? '' : ' is-removed'}`;
     card.dataset.userId = String(user.user_id);
@@ -990,6 +1079,8 @@ async function renderBranches() {
   document.getElementById('branch-edit').hidden = true;
   const host = document.getElementById('branch-list');
   host.replaceChildren();
+  const openBranches = register.branches.filter((branch) => branch.is_active).length;
+  setFoldCount('branch-count', openBranches === 1 ? '1 open' : `${openBranches} open`);
   if (!register.branches.length) {
     const empty = document.createElement('p');
     empty.className = 'staff-meta';
@@ -1705,6 +1796,33 @@ if (themeSelect) {
   applyLedgerTheme(sessionStorage.getItem('ledger-theme') || 'paper');
   themeSelect.addEventListener('change', () => applyLedgerTheme(themeSelect.value));
 }
+
+function setFoldCount(id, text) {
+  const node = document.getElementById(id);
+  if (node) node.textContent = text;
+}
+
+function setFold(button, body, open) {
+  button.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (body) body.hidden = !open;
+  const word = button.querySelector('.fold-word');
+  if (word) word.textContent = open ? 'Hide' : 'Show';
+}
+
+function bindFolds() {
+  for (const button of document.querySelectorAll('.fold-toggle')) {
+    const body = document.getElementById(button.getAttribute('aria-controls'));
+    const key = `fold:${button.getAttribute('aria-controls')}`;
+    setFold(button, body, sessionStorage.getItem(key) !== 'closed');
+    button.addEventListener('click', () => {
+      const open = button.getAttribute('aria-expanded') !== 'true';
+      setFold(button, body, open);
+      sessionStorage.setItem(key, open ? 'open' : 'closed');
+    });
+  }
+}
+
+bindFolds();
 
 function turnSheetPage(step) {
   if (!state.book) return;

@@ -2,6 +2,7 @@ const { VaultError } = require('./errors');
 const { recordAudit } = require('./audit');
 const { addDays, calendarOptions, zonedParts } = require('./calendar');
 const { holidayDates, zambiaHolidays } = require('./zambiaHolidays');
+const { isMasterAdmin } = require('../middleware/auth');
 
 const OPS_ROLE = 'REGIONAL_OPS_MANAGER';
 
@@ -13,6 +14,21 @@ function assertOps(actor) {
       403,
     );
   }
+}
+
+function canSetNonWorkingDay(actor) {
+  if (!actor || actor.actorUserId) return false;
+  if (actor.role === OPS_ROLE) return true;
+  return isMasterAdmin({ work_email: actor.email });
+}
+
+function assertDayWriter(actor) {
+  if (canSetNonWorkingDay(actor)) return;
+  throw new VaultError(
+    'FORBIDDEN',
+    'Only the master admin or a regional operations manager can set a non-working day.',
+    403,
+  );
 }
 
 function businessToday(now, overrides = {}) {
@@ -168,6 +184,26 @@ async function assertNoOverlap(db, tenantId, branchIds, startDate, endDate) {
 
 async function declareClosure(db, actor, body) {
   assertOps(actor);
+  return writeClosure(db, actor, body);
+}
+
+async function declareNonWorkingDay(db, actor, body) {
+  assertDayWriter(actor);
+  const date = String(body.non_working_date || body.nonWorkingDate || body.date || '').trim();
+  const branchId = Number(body.branch_id || body.branchId || actor.branchId);
+  if (!Number.isInteger(branchId) || branchId <= 0) {
+    throw new VaultError('CLOSURE_SCOPE', 'Choose the branch this day applies to');
+  }
+  return writeClosure(db, actor, {
+    scope: 'BRANCH',
+    branchIds: [branchId],
+    startDate: date,
+    endDate: date,
+    reason: body.reason,
+  });
+}
+
+async function writeClosure(db, actor, body) {
   const startDate = body.startDate || body.start_date;
   const endDate = body.endDate || body.end_date || startDate;
   assertRange(startDate, endDate);
@@ -245,7 +281,7 @@ async function declareClosure(db, actor, body) {
 }
 
 async function cancelClosure(db, actor, closureId) {
-  assertOps(actor);
+  assertDayWriter(actor);
   const id = Number(closureId);
   const found = await db.query(
     `SELECT c.closure_id, c.start_date::text AS start_date, c.scope,
@@ -517,6 +553,8 @@ async function calendarDesk(db, tenantId, branchId, actor, now = new Date()) {
   return {
     today,
     canManage: Boolean(actor && actor.role === OPS_ROLE),
+    canSetDay: canSetNonWorkingDay(actor),
+    homeBranchId: actor && actor.branchId ? Number(actor.branchId) : null,
     nonWorking,
     holidays,
     closures: closures.rows.map((row) => ({
@@ -557,6 +595,7 @@ async function calendarDesk(db, tenantId, branchId, actor, now = new Date()) {
 module.exports = {
   OPS_ROLE,
   declareClosure,
+  declareNonWorkingDay,
   cancelClosure,
   declareGazetted,
   cancelGazetted,
