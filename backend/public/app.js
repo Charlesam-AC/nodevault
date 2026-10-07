@@ -226,17 +226,23 @@ function renderSignoff() {
   const people = [...custodians, coord].filter(Boolean);
   host.replaceChildren();
   for (const person of people) {
+    const coordinator = person.system_role === 'HEAD_TELLER_COORDINATOR';
     const card = document.createElement('article');
+    card.className = coordinator ? 'sign-card is-coordinator' : 'sign-card';
     const title = document.createElement('h3');
-    title.textContent = person.system_role === 'HEAD_TELLER_COORDINATOR'
-      ? 'Weekly teller coordinator'
-      : 'Vault custodian';
+    title.className = 'seat-kicker';
+    title.textContent = coordinator ? 'Weekly teller coordinator' : 'Vault custodian';
     const name = document.createElement('p');
+    name.className = 'seat-name';
     name.textContent = person.full_legal_name;
     const id = document.createElement('p');
+    id.className = 'seat-meta';
     id.textContent = `${person.employee_id} · ${person.two_letter_initials}`;
     const line = document.createElement('div');
     line.className = 'sig-line';
+    const caption = document.createElement('span');
+    caption.textContent = 'Signature';
+    line.appendChild(caption);
     card.append(title, name, id, line);
     host.appendChild(card);
   }
