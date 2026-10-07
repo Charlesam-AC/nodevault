@@ -174,7 +174,7 @@ main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
   grid-row: span 2;
   align-self: center;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
-  color: #1a7394;
+  color: #126480;
   font-weight: 500;
   font-size: 0.82rem;
   letter-spacing: 0.04em;
@@ -275,7 +275,7 @@ main { padding: 1.25rem; max-width: 1440px; margin: 0 auto; }
   color: #16323a;
   box-shadow: inset 0 1px 2px rgba(16, 40, 51, 0.06);
 }
-.login-screen .field-icon input::placeholder { color: #8aa0a8; }
+.login-screen .field-icon input::placeholder { color: #5c727a; opacity: 1; }
 .login-screen .field-icon input:focus-visible,
 .login-card button[type="submit"]:focus-visible,
 .entra-fold button[type="submit"]:focus-visible {
@@ -391,7 +391,12 @@ button[type="submit"], #open-close {
 }
 .hint, .status, .formula { color: var(--ink-soft); margin: 0.35rem 0; }
 body:not(.is-gate) .status,
-body:not(.is-gate) .formula { color: #f7fbfb; }
+body:not(.is-gate) .formula,
+body:not(.is-gate) .book-date,
+body:not(.is-gate) footer {
+  color: #ffffff;
+  text-shadow: 0 1px 1px rgba(0, 32, 30, 0.55);
+}
 .error { color: var(--seal); min-height: 1.2rem; margin-top: 0.6rem; }
 .book-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .book-tabs button {
@@ -407,6 +412,7 @@ body:not(.is-gate) .formula { color: #f7fbfb; }
 }
 .banner {
   background: #f8e7c8;
+  color: #3a2a12;
   border: 1px solid var(--brass);
   padding: 0.6rem 0.8rem;
   margin-bottom: 0.8rem;
@@ -417,6 +423,8 @@ body:not(.is-gate) .formula { color: #f7fbfb; }
   font-variant-numeric: tabular-nums lining-nums;
   font-feature-settings: "tnum" 1, "lnum" 1;
   font-weight: 500;
+  color: #102833;
+  -webkit-text-fill-color: #102833;
   background: white;
   border: 1px solid var(--rule);
   padding: 0.25rem 0.55rem;
@@ -632,7 +640,7 @@ dialog { width: min(100% - 2rem, 40rem); }
 dialog::backdrop { background: rgba(16, 40, 51, 0.45); }
 .pin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
-footer { padding: 1.5rem 1.25rem 2rem; color: rgba(247, 251, 251, 0.82); font-size: 0.82rem; }
+footer { padding: 1.5rem 1.25rem 2rem; color: #ffffff; font-size: 0.82rem; }
 .entry-panel {
   background: white;
   color: var(--ink);
@@ -730,4 +738,76 @@ footer { padding: 1.5rem 1.25rem 2rem; color: rgba(247, 251, 251, 0.82); font-si
   .login-story .hint { margin-top: 1rem; }
   .login-panel h2 { font-size: 1.55rem; }
   .card, .login-stack, dialog { width: 100%; }
+}
+
+/* Desk type sits on white cards or on the teal page. Native selects were
+   painting a thin gray, and a few chips inherited the page's light color. */
+body:not(.is-gate) {
+  color-scheme: light;
+}
+body:not(.is-gate) :is(input, select, textarea) {
+  color: #102833 !important;
+  -webkit-text-fill-color: #102833;
+  background-color: #fff;
+  caret-color: #102833;
+  color-scheme: light;
+  opacity: 1;
+}
+body:not(.is-gate) select {
+  appearance: none;
+  -webkit-appearance: none;
+  font-weight: 600;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'><path fill='%23102833' d='M1.2 1.4 6 6.6 10.8 1.4'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 0.7rem;
+  padding-right: 1.7rem;
+}
+body:not(.is-gate) option {
+  color: #102833;
+  background-color: #ffffff;
+  font-weight: 500;
+}
+body:not(.is-gate) :is(input, textarea)::placeholder {
+  color: #5c727a;
+  -webkit-text-fill-color: #5c727a;
+  opacity: 1;
+  font-weight: 400;
+}
+#act-as,
+#entra-admin,
+#calendar-panel,
+#rotation-panel article,
+#handover-panel,
+.entry-panel,
+.signoff article,
+.signoff h3,
+.signoff p,
+.card,
+dialog,
+.banner {
+  color: #102833;
+}
+#act-as-open,
+#acting-return,
+#acting-banner,
+body:not(.is-gate) button[type="submit"],
+#open-close,
+.book-tabs button[aria-selected="true"] {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+}
+#acting-exit,
+.book-tabs button,
+#entry-square,
+.mast-meta button {
+  -webkit-text-fill-color: currentColor;
+}
+#carry-flags:not(:empty) {
+  color: #4a121c;
+  background: #fff;
+  border: 1px solid #e4b4b8;
+  padding: 0.4rem 0.65rem;
+  border-radius: 6px;
+  text-shadow: none;
 }
