@@ -566,6 +566,40 @@ test('a vault custodian can amend an open line and a closed book stays locked', 
   });
   assert.equal(coordinatorAttempt.status, 403);
 
+  process.env.SEED_DEMO_DATA = 'true';
+  process.env.MASTER_ADMIN_EMAIL = 'admin@demo-bank.example';
+  process.env.MASTER_ADMIN_PASSWORD = 'NodeVault-admin-2026';
+  process.env.DEMO_CLOSING_PIN = '135790';
+  const { ensureMasterAdmin } = require('../services/seed');
+  await ensureMasterAdmin(applicationPool);
+  const master = await postPassword(applicationPool, {
+    email: 'admin@demo-bank.example',
+    password: 'NodeVault-admin-2026',
+  });
+  const adminAmend = await request(applicationPool, {
+    method: 'PATCH',
+    path: `/api/books/${bookId}/entries/${line.line_number}`,
+    token: master.body.token,
+    body: {
+      accounting_label: 'In',
+      line_reference: 'Admin test',
+      flow_direction: 'IN',
+      custodian_one_initials: 'C.A.',
+      custodian_two_initials: 'J.P.',
+      teller_coord_initials: 'M.K.',
+      amounts,
+    },
+  });
+  assert.equal(adminAmend.status, 200);
+  const adminView = await request(applicationPool, {
+    path: `/api/books/${bookId}`,
+    token: master.body.token,
+  });
+  assert.equal(
+    adminView.body.rows.find((row) => row.line_number === line.line_number).reference,
+    'Admin test',
+  );
+
   await applicationPool.query(
     `UPDATE branch_vault_books SET status = 'BALANCED_CLOSED', closed_at = now() WHERE book_id = $1`,
     [bookId],

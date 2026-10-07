@@ -67,7 +67,8 @@ function deskCanPost(user) {
 }
 
 function deskCanAmend(user) {
-  return user.role === 'VAULT_CUSTODIAN';
+  if (user.role === 'VAULT_CUSTODIAN') return true;
+  return isMasterAdmin({ work_email: user.email }) && !user.actorUserId;
 }
 
 function entrySignatories(body) {
@@ -302,7 +303,7 @@ function buildApp(db) {
 
   app.patch('/api/books/:bookId/entries/:lineNumber', guard, asyncRoute(async (req, res) => {
     if (!deskCanAmend(req.user)) {
-      throw new VaultError('WRONG_ROLE', 'Only a vault custodian can amend an open book', 403);
+      throw new VaultError('WRONG_ROLE', 'Only a vault custodian or the master admin can amend an open book', 403);
     }
     const lineNumber = Number(req.params.lineNumber);
     if (!Number.isInteger(lineNumber) || lineNumber < 1) {

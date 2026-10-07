@@ -717,7 +717,9 @@ function canPostEntries() {
 }
 
 function canAmendBook(view) {
-  return view?.book?.status === 'OPEN' && state.me?.system_role === 'VAULT_CUSTODIAN';
+  if (view?.book?.status !== 'OPEN') return false;
+  if (state.me?.system_role === 'VAULT_CUSTODIAN') return true;
+  return Boolean(state.me?.can_act_as);
 }
 
 function prettyDate(iso) {
