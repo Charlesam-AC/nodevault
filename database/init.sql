@@ -404,7 +404,52 @@ RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = public
 AS $$
+DECLARE
+  book_status nodevault_book_status;
 BEGIN
+  -- Deletes, and the audit log, stay append-only. An open book can still
+  -- be corrected in place. A closed book cannot.
+  IF TG_OP = 'DELETE' OR TG_TABLE_NAME = 'audit_events' THEN
+    RAISE EXCEPTION 'ledger is append-only';
+  END IF;
+
+  IF TG_TABLE_NAME = 'vault_denomination_matrix_ledger' THEN
+    IF NEW.matrix_tx_id IS DISTINCT FROM OLD.matrix_tx_id
+       OR NEW.book_id IS DISTINCT FROM OLD.book_id
+       OR NEW.line_number IS DISTINCT FROM OLD.line_number
+       OR NEW.transaction_date IS DISTINCT FROM OLD.transaction_date
+       OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+      RAISE EXCEPTION 'ledger line identity is immutable';
+    END IF;
+    SELECT status INTO book_status
+    FROM branch_vault_books
+    WHERE book_id = OLD.book_id
+    FOR SHARE;
+    IF book_status IS DISTINCT FROM 'OPEN' THEN
+      RAISE EXCEPTION 'ledger is append-only';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF TG_TABLE_NAME = 'ledger_amount_cells' THEN
+    IF NEW.cell_id IS DISTINCT FROM OLD.cell_id
+       OR NEW.matrix_tx_id IS DISTINCT FROM OLD.matrix_tx_id
+       OR NEW.channel_code IS DISTINCT FROM OLD.channel_code
+       OR NEW.denomination_code IS DISTINCT FROM OLD.denomination_code
+       OR NEW.cell_kind IS DISTINCT FROM OLD.cell_kind THEN
+      RAISE EXCEPTION 'ledger cell identity is immutable';
+    END IF;
+    SELECT b.status INTO book_status
+    FROM vault_denomination_matrix_ledger e
+    JOIN branch_vault_books b ON b.book_id = e.book_id
+    WHERE e.matrix_tx_id = OLD.matrix_tx_id
+    FOR SHARE;
+    IF book_status IS DISTINCT FROM 'OPEN' THEN
+      RAISE EXCEPTION 'ledger is append-only';
+    END IF;
+    RETURN NEW;
+  END IF;
+
   RAISE EXCEPTION 'ledger is append-only';
 END;
 $$;
@@ -625,6 +670,12 @@ DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW
 EXECUTE FUNCTION nodevault_verify_entry_arithmetic();
 
+CREATE CONSTRAINT TRIGGER nodevault_entry_arithmetic_cell_update
+AFTER UPDATE ON ledger_amount_cells
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION nodevault_verify_entry_arithmetic();
+
 -- Least privilege for the API role. Triggers still reject mutations if a grant is widened later.
 DO $$
 BEGIN
@@ -652,6 +703,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON denomination_catalogue TO nodevault_app;
 
 REVOKE UPDATE, DELETE, TRUNCATE ON vault_denomination_matrix_ledger FROM nodevault_app;
 REVOKE UPDATE, DELETE, TRUNCATE ON ledger_amount_cells FROM nodevault_app;
+GRANT UPDATE (
+  accounting_label, line_reference, flow_direction,
+  custodian_one_initials, custodian_two_initials, teller_coord_initials
+) ON vault_denomination_matrix_ledger TO nodevault_app;
+GRANT UPDATE (amount_minor) ON ledger_amount_cells TO nodevault_app;
 REVOKE UPDATE, DELETE, TRUNCATE ON audit_events FROM nodevault_app;
 REVOKE DELETE, TRUNCATE ON branch_vault_books FROM nodevault_app;
 REVOKE DELETE, TRUNCATE ON audit_events FROM nodevault_app;

@@ -22,13 +22,6 @@ test('ledger rows are append-only, closed books reject lines, and old currency i
 
   await assert.rejects(
     () => adminPool.query(
-      `UPDATE vault_denomination_matrix_ledger SET accounting_label = 'tamper' WHERE book_id = $1`,
-      [bookId],
-    ),
-    /append-only/i,
-  );
-  await assert.rejects(
-    () => adminPool.query(
       `DELETE FROM ledger_amount_cells WHERE matrix_tx_id IN (
          SELECT matrix_tx_id FROM vault_denomination_matrix_ledger WHERE book_id = $1
        )`,
@@ -36,6 +29,14 @@ test('ledger rows are append-only, closed books reject lines, and old currency i
     ),
     /append-only/i,
   );
+  const openCorrection = await adminPool.query(
+    `UPDATE vault_denomination_matrix_ledger
+     SET line_reference = 'open-book correction'
+     WHERE book_id = $1 AND line_number = 2
+     RETURNING line_number`,
+    [bookId],
+  );
+  assert.equal(openCorrection.rowCount, 1);
   await assert.rejects(
     () => applicationPool.query(
       `UPDATE ledger_amount_cells SET amount_minor = 1
@@ -44,7 +45,7 @@ test('ledger rows are append-only, closed books reject lines, and old currency i
        )`,
       [bookId],
     ),
-    /permission denied/i,
+    /subtotal mismatch/i,
   );
   await assert.rejects(
     () => applicationPool.query('TRUNCATE vault_denomination_matrix_ledger'),
@@ -74,6 +75,13 @@ test('ledger rows are append-only, closed books reject lines, and old currency i
      SET status = 'BALANCED_CLOSED', closed_at = now()
      WHERE book_id = $1`,
     [bookId],
+  );
+  await assert.rejects(
+    () => adminPool.query(
+      `UPDATE vault_denomination_matrix_ledger SET accounting_label = 'tamper' WHERE book_id = $1`,
+      [bookId],
+    ),
+    /append-only/i,
   );
   await assert.rejects(
     () => applicationPool.query(

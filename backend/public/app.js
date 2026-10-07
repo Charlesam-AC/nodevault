@@ -7,6 +7,7 @@ const state = {
   directory: [],
   businessDate: '',
   dates: [],
+  amendingLine: null,
 };
 
 const loginView = document.getElementById('login-view');
@@ -115,6 +116,14 @@ function renderSpread(view) {
         td.classList.add('dynamic-fit-value');
       }
       td.textContent = text;
+      if (column.key === 'line_number' && canAmendBook(view)) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'amend-line';
+        button.textContent = 'Amend';
+        button.addEventListener('click', () => startAmend(row));
+        td.appendChild(button);
+      }
       tr.appendChild(td);
     }
     tbody.appendChild(tr);
@@ -707,6 +716,10 @@ function canPostEntries() {
   return false;
 }
 
+function canAmendBook(view) {
+  return view?.book?.status === 'OPEN' && state.me?.system_role === 'VAULT_CUSTODIAN';
+}
+
 function prettyDate(iso) {
   const [year, month, day] = iso.split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString('en-GB', {
@@ -764,9 +777,17 @@ function renderEntry(view) {
     return;
   }
   form.hidden = false;
+  state.amendingLine = null;
+  document.getElementById('entry-title').textContent = 'Write a line';
+  document.getElementById('entry-submit').textContent = 'Post the line';
+  document.getElementById('entry-cancel').hidden = true;
+  document.getElementById('entry-flow').disabled = false;
   note.textContent = view.square_required
     ? 'Amounts, not pieces. Post the line, then write Bal c/d so the sheet squares.'
     : 'Amounts, not pieces. The line is appended to this open book.';
+  if (canAmendBook(view)) {
+    note.textContent += ' Amend any line while this book is open. A later Bal c/d follows the corrected position.';
+  }
   document.getElementById('entry-square').hidden = !view.square_required;
   const initials = rosterInitials();
   document.getElementById('entry-c1').value = initials.c1;
@@ -824,6 +845,38 @@ function entryMovement() {
   };
 }
 
+function startAmend(row) {
+  state.amendingLine = row.line_number;
+  state.amendingLabel = row.accounting_label;
+  state.amendingFlow = row.flow_direction;
+  document.getElementById('entry-title').textContent = `Amend line ${row.line_number}`;
+  document.getElementById('entry-submit').textContent = 'Save amendment';
+  document.getElementById('entry-cancel').hidden = false;
+  document.getElementById('entry-square').hidden = true;
+  document.getElementById('entry-error').textContent = '';
+  const flow = document.getElementById('entry-flow');
+  if (row.flow_direction === 'BAL') {
+    flow.disabled = true;
+  } else {
+    flow.disabled = false;
+    if (row.in_or_out === 'CIT In') flow.value = 'CIT_IN';
+    else if (row.in_or_out === 'CIT Out') flow.value = 'CIT_OUT';
+    else flow.value = row.flow_direction === 'OUT' ? 'OUT' : 'IN';
+  }
+  document.getElementById('entry-label').value = row.reference || row.accounting_label || '';
+  document.getElementById('entry-c1').value = row.custodian_one_initials || '';
+  document.getElementById('entry-c2').value = row.custodian_two_initials || '';
+  document.getElementById('entry-coord').value = row.teller_coord_initials || '';
+  for (const input of document.querySelectorAll('#entry-amounts input')) {
+    const raw = row.amounts?.[input.dataset.channel]?.[input.dataset.code];
+    input.value = raw && raw !== '0.00' ? raw : '';
+  }
+  document.getElementById('entry-note').textContent = row.flow_direction === 'BAL'
+    ? 'This balance line keeps its Bal label. Amounts have to match the running position.'
+    : 'Saving rewrites a later Bal c/d so the sheet still squares.';
+  document.getElementById('entry-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function entryPayload() {
   const amounts = {};
   for (const input of document.querySelectorAll('#entry-amounts input')) {
@@ -832,8 +885,15 @@ function entryPayload() {
     if (!amounts[input.dataset.channel]) amounts[input.dataset.channel] = {};
     amounts[input.dataset.channel][input.dataset.code] = raw;
   }
+  const movement = state.amendingFlow === 'BAL'
+    ? {
+      flow_direction: 'BAL',
+      accounting_label: state.amendingLabel,
+      line_reference: document.getElementById('entry-label').value.trim(),
+    }
+    : entryMovement();
   return {
-    ...entryMovement(),
+    ...movement,
     custodian_one_initials: document.getElementById('entry-c1').value.trim(),
     custodian_two_initials: document.getElementById('entry-c2').value.trim(),
     teller_coord_initials: document.getElementById('entry-coord').value.trim(),
@@ -988,23 +1048,37 @@ document.getElementById('entry-form').addEventListener('submit', async (event) =
   const button = document.getElementById('entry-submit');
   error.textContent = '';
   const payload = entryPayload();
-  if (!Object.keys(payload.amounts).length) {
+  const amending = state.amendingLine;
+  if (payload.flow_direction !== 'BAL' && !Object.keys(payload.amounts).length) {
     error.textContent = 'Enter an amount on at least one denomination.';
     return;
   }
   button.disabled = true;
   try {
-    const result = await api(`/api/books/${state.book.book.book_id}/entries`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    await openBook(state.book.book.book_id);
-    document.getElementById('desk-status').textContent = `Line ${result.lineNumber} is on the sheet.`;
+    if (amending) {
+      await api(`/api/books/${state.book.book.book_id}/entries/${amending}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      });
+      await openBook(state.book.book.book_id);
+      document.getElementById('desk-status').textContent = `Line ${amending} is amended.`;
+    } else {
+      const result = await api(`/api/books/${state.book.book.book_id}/entries`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      await openBook(state.book.book.book_id);
+      document.getElementById('desk-status').textContent = `Line ${result.lineNumber} is on the sheet.`;
+    }
   } catch (err) {
     error.textContent = err.message;
   } finally {
     button.disabled = false;
   }
+});
+
+document.getElementById('entry-cancel').addEventListener('click', () => {
+  renderEntry(state.book);
 });
 
 document.getElementById('entry-square').addEventListener('click', async () => {

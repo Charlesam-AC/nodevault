@@ -19,7 +19,7 @@ const {
   cancelGazetted,
 } = require('./services/closures');
 const { holdersForDate, rotationView, captureHandover } = require('./services/rotation');
-const { getBookView, insertLedgerRow, writeCarriedDown } = require('./services/ledger');
+const { getBookView, insertLedgerRow, amendLedgerRow, writeCarriedDown } = require('./services/ledger');
 const { recordAudit } = require('./services/audit');
 const { executeThreePersonVaultLock, dispatchClosing } = require('./services/closing');
 const { openBreakGlass } = require('./services/breakglass');
@@ -64,6 +64,10 @@ function deskCanPost(user) {
   if (user.role === 'VAULT_CUSTODIAN' || user.role === 'HEAD_TELLER_COORDINATOR') return true;
   if (user.role === 'IT_SUPER_ADMIN' && user.breakGlassId) return true;
   return isMasterAdmin({ work_email: user.email }) && !user.actorUserId;
+}
+
+function deskCanAmend(user) {
+  return user.role === 'VAULT_CUSTODIAN';
 }
 
 function entrySignatories(body) {
@@ -294,6 +298,43 @@ function buildApp(db) {
       },
     });
     res.status(201).json(created);
+  }));
+
+  app.patch('/api/books/:bookId/entries/:lineNumber', guard, asyncRoute(async (req, res) => {
+    if (!deskCanAmend(req.user)) {
+      throw new VaultError('WRONG_ROLE', 'Only a vault custodian can amend an open book', 403);
+    }
+    const lineNumber = Number(req.params.lineNumber);
+    if (!Number.isInteger(lineNumber) || lineNumber < 1) {
+      throw new VaultError('LINE_NOT_FOUND', 'That line is not on this book', 404);
+    }
+    if (req.body.flow_direction !== 'BAL' && !movementHasAmount(req.body.amounts)) {
+      throw new VaultError('INVALID_AMOUNT', 'Enter an amount on at least one denomination');
+    }
+    const signatories = entrySignatories(req.body);
+    const amended = await amendLedgerRow(db, {
+      tenantId: req.user.tenantId,
+      bookId: req.params.bookId,
+      lineNumber,
+      ...signatories,
+      flowDirection: req.body.flow_direction,
+      amounts: req.body.amounts,
+    });
+    await recordAudit(db, {
+      tenantId: req.user.tenantId,
+      bookId: req.params.bookId,
+      eventType: 'LEDGER_LINE_AMENDED',
+      actorUserIds: [req.user.userId],
+      detail: {
+        actor_user_id: req.user.actorUserId || null,
+        line_number: lineNumber,
+        flow_direction: req.body.flow_direction,
+        accounting_label: signatories.accountingLabel,
+        line_reference: signatories.lineReference,
+        carried_lines: amended.carriedLines,
+      },
+    });
+    res.json(amended);
   }));
 
   app.post('/api/books/:bookId/square', guard, asyncRoute(async (req, res) => {

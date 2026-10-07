@@ -578,6 +578,18 @@ tr[data-label="Bal c/d"] td.dynamic-fit-value { font-weight: 600; }
 .ledger-table td.col-grand { min-width: 9.25rem; }
 .col-no,
 .col-identity { text-align: center; }
+.amend-line {
+  display: block;
+  margin: 0.28rem auto 0;
+  padding: 0.12rem 0.4rem;
+  border: 1px solid #1c6e90;
+  background: #fff;
+  color: #102833;
+  -webkit-text-fill-color: #102833;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .ledger-table td.col-identity { min-width: 4.5rem; }
 .col-no {
   color: var(--ledger-ink);
@@ -705,7 +717,8 @@ footer { padding: 1.5rem 1.25rem 2rem; color: #ffffff; font-size: 0.82rem; }
   .status,
   .formula,
   .signoff,
-  .banner { display: none !important; }
+  .banner,
+  .amend-line { display: none !important; }
   body { background: #fff; }
   main { max-width: none; padding: 0; }
   .ledger-margin,

@@ -480,3 +480,110 @@ test('password sign-in keeps the corporate domain restriction', async () => {
   assert.equal(result.status, 403);
   assert.equal(result.body.error, 'DOMAIN_REJECTED');
 });
+
+test('a vault custodian can amend an open line and a closed book stays locked', async () => {
+  const { applicationPool } = pools();
+  const desk = await createDesk(pinHash);
+  await setPassword(CUSTODIAN);
+  await setPassword('teller.desk@demo-bank.example');
+  await setPassword('coordinator.mk@demo-bank.example');
+  const custodian = await postPassword(applicationPool, { email: CUSTODIAN, password: PASSWORD });
+  const bookId = desk.books.KWACHA_TREASURY;
+  const before = await request(applicationPool, {
+    path: `/api/books/${bookId}`,
+    token: custodian.body.token,
+  });
+  const line = before.body.rows.find((row) => row.flow_direction === 'IN');
+  assert.ok(line);
+  const amounts = JSON.parse(JSON.stringify(line.amounts));
+  amounts.REISSUABLE = amounts.REISSUABLE || {};
+  const kwacha = Number(String(amounts.REISSUABLE.K10 || '0').split('.')[0]) + 10;
+  amounts.REISSUABLE.K10 = `${kwacha}.00`;
+  const amended = await request(applicationPool, {
+    method: 'PATCH',
+    path: `/api/books/${bookId}/entries/${line.line_number}`,
+    token: custodian.body.token,
+    body: {
+      accounting_label: 'In',
+      line_reference: 'Vault slip',
+      flow_direction: 'IN',
+      custodian_one_initials: 'C.A.',
+      custodian_two_initials: 'J.P.',
+      teller_coord_initials: 'M.K.',
+      amounts,
+    },
+  });
+  assert.equal(amended.status, 200);
+  assert.ok(amended.body.carriedLines.length > 0);
+  const after = await request(applicationPool, {
+    path: `/api/books/${bookId}`,
+    token: custodian.body.token,
+  });
+  const updated = after.body.rows.find((row) => row.line_number === line.line_number);
+  assert.equal(updated.reference, 'Vault slip');
+  assert.equal(updated.in_or_out, 'In');
+  assert.equal(after.body.square_required, false);
+  assert.notEqual(after.body.position.ZMW.display, before.body.position.ZMW.display);
+
+  const teller = await postPassword(applicationPool, {
+    email: 'teller.desk@demo-bank.example',
+    password: PASSWORD,
+  });
+  const tellerAttempt = await request(applicationPool, {
+    method: 'PATCH',
+    path: `/api/books/${bookId}/entries/${line.line_number}`,
+    token: teller.body.token,
+    body: {
+      accounting_label: 'In',
+      line_reference: 'Teller slip',
+      flow_direction: 'IN',
+      custodian_one_initials: 'C.A.',
+      custodian_two_initials: 'J.P.',
+      teller_coord_initials: 'M.K.',
+      amounts,
+    },
+  });
+  assert.equal(tellerAttempt.status, 403);
+  assert.equal(tellerAttempt.body.error, 'WRONG_ROLE');
+
+  const coordinator = await postPassword(applicationPool, {
+    email: 'coordinator.mk@demo-bank.example',
+    password: PASSWORD,
+  });
+  const coordinatorAttempt = await request(applicationPool, {
+    method: 'PATCH',
+    path: `/api/books/${bookId}/entries/${line.line_number}`,
+    token: coordinator.body.token,
+    body: {
+      accounting_label: 'In',
+      line_reference: 'Teller slip',
+      flow_direction: 'IN',
+      custodian_one_initials: 'C.A.',
+      custodian_two_initials: 'J.P.',
+      teller_coord_initials: 'M.K.',
+      amounts,
+    },
+  });
+  assert.equal(coordinatorAttempt.status, 403);
+
+  await applicationPool.query(
+    `UPDATE branch_vault_books SET status = 'BALANCED_CLOSED', closed_at = now() WHERE book_id = $1`,
+    [bookId],
+  );
+  const closed = await request(applicationPool, {
+    method: 'PATCH',
+    path: `/api/books/${bookId}/entries/${line.line_number}`,
+    token: custodian.body.token,
+    body: {
+      accounting_label: 'In',
+      line_reference: 'Too late',
+      flow_direction: 'IN',
+      custodian_one_initials: 'C.A.',
+      custodian_two_initials: 'J.P.',
+      teller_coord_initials: 'M.K.',
+      amounts,
+    },
+  });
+  assert.equal(closed.status, 409);
+  assert.equal(closed.body.error, 'BOOK_CLOSED');
+});

@@ -334,6 +334,7 @@ async function loadRows(db, bookId) {
     byEntry.set(String(cell.matrix_tx_id), list);
   }
   return entries.rows.map((entry) => ({
+    matrixTxId: entry.matrix_tx_id,
     lineNumber: entry.line_number,
     transactionDate: entry.transaction_date,
     custodianOneInitials: entry.custodian_one_initials,
@@ -372,8 +373,12 @@ function presentRows(bookClass, rows) {
       in_or_out: inOrOut(row),
       reference: row.lineReference || row.accountingLabel,
       initials: initialsOf(row),
+      custodian_one_initials: row.custodianOneInitials,
+      custodian_two_initials: row.custodianTwoInitials,
+      teller_coord_initials: row.tellerCoordInitials,
       accounting_label: row.accountingLabel,
       flow_direction: row.flowDirection,
+      amounts: amountsFromCells(row.cells),
       displays,
     };
   });
@@ -502,6 +507,191 @@ async function writeCarriedDown(db, {
   }
 }
 
+function alignCarriedBalances(bookClass, rows, amendedLineNumber) {
+  let position = null;
+  const carried = [];
+  const next = [];
+  for (const row of rows) {
+    if (row.flowDirection === 'BAL') {
+      if (position === null) {
+        position = mapFromCells(row.cells);
+        next.push(row);
+        continue;
+      }
+      if (row.lineNumber > amendedLineNumber && !sameMap(position, mapFromCells(row.cells))) {
+        const cells = cellsFromMap(bookClass, position);
+        const aligned = { ...row, cells };
+        carried.push(aligned);
+        next.push(aligned);
+      } else if (row.lineNumber > amendedLineNumber) {
+        next.push(row);
+      } else if (!sameMap(position, mapFromCells(row.cells))) {
+        throw new VaultError(
+          'BOOK_OUT_OF_BALANCE',
+          'A balance row does not match the running denomination position',
+          409,
+        );
+      } else {
+        next.push(row);
+      }
+      position = mapFromCells(next[next.length - 1].cells);
+      continue;
+    }
+    if (row.flowDirection !== 'IN' && row.flowDirection !== 'OUT') {
+      throw new VaultError('INVALID_FLOW', 'Flow must be IN, OUT, or BAL');
+    }
+    if (position === null) {
+      throw new VaultError('BOOK_OUT_OF_BALANCE', 'Movements cannot precede the opening balance', 409);
+    }
+    const sign = row.flowDirection === 'IN' ? 1n : -1n;
+    const snapshot = mapFromCells(row.cells);
+    const following = { ...position };
+    for (const key of new Set([...Object.keys(position), ...Object.keys(snapshot)])) {
+      const value = (position[key] || 0n) + sign * (snapshot[key] || 0n);
+      if (value < 0n) {
+        throw new VaultError('BOOK_OUT_OF_BALANCE', 'A denomination would go negative', 409);
+      }
+      following[key] = value;
+    }
+    position = following;
+    next.push(row);
+  }
+  if (position === null) {
+    throw new VaultError('BOOK_OUT_OF_BALANCE', 'The book has no opening balance', 409);
+  }
+  return { rows: next, carried };
+}
+
+async function writeCells(client, row) {
+  for (const cell of row.cells) {
+    const updated = await client.query(
+      `UPDATE ledger_amount_cells
+       SET amount_minor = $1
+       WHERE matrix_tx_id = $2
+         AND channel_code = $3
+         AND denomination_code = $4
+         AND cell_kind = $5`,
+      [cell.amountMinor.toString(), row.matrixTxId, cell.channel, cell.code, cell.kind],
+    );
+    if (updated.rowCount !== 1) {
+      throw new VaultError('LEDGER_REJECTED', `The ${cell.header} cell could not be amended`, 409);
+    }
+  }
+}
+
+async function amendLedgerRow(db, {
+  tenantId,
+  bookId,
+  lineNumber,
+  custodianOneInitials,
+  custodianTwoInitials,
+  tellerCoordInitials,
+  accountingLabel,
+  lineReference = null,
+  flowDirection,
+  amounts,
+}) {
+  for (const initials of [custodianOneInitials, custodianTwoInitials, tellerCoordInitials]) {
+    if (!initials || String(initials).length > 8) {
+      throw new VaultError('INVALID_INITIALS', 'Each signatory initials field is required');
+    }
+  }
+  const owns = typeof db.connect === 'function' && !db.release;
+  const client = owns ? await db.connect() : db;
+  try {
+    if (owns) await client.query('BEGIN');
+    const book = await client.query(
+      `SELECT book_id, branch_id, book_class, status
+       FROM branch_vault_books
+       WHERE book_id = $1 AND tenant_id = $2
+       FOR UPDATE`,
+      [bookId, tenantId],
+    );
+    if (book.rowCount !== 1) throw new VaultError('BOOK_NOT_FOUND', 'Treasury book not found', 404);
+    const record = book.rows[0];
+    if (record.status !== 'OPEN') {
+      throw new VaultError('BOOK_CLOSED', 'Closed books reject amendments', 409);
+    }
+    const rows = await loadRows(client, bookId);
+    const existing = rows.find((row) => row.lineNumber === lineNumber);
+    if (!existing) throw new VaultError('LINE_NOT_FOUND', 'That line is not on this book', 404);
+    if (existing.flowDirection === 'BAL' && flowDirection !== 'BAL') {
+      throw new VaultError('INVALID_FLOW', 'A balance line stays Bal b/f or Bal c/d');
+    }
+    if (existing.flowDirection !== 'BAL' && !['IN', 'OUT'].includes(flowDirection)) {
+      throw new VaultError('INVALID_FLOW', 'Flow must be IN, OUT, or BAL');
+    }
+    const cells = composeRow(record.book_class, { amounts, flowDirection: existing.flowDirection === 'BAL' ? 'BAL' : flowDirection });
+    const patched = rows.map((row) => (
+      row.lineNumber === lineNumber
+        ? {
+          ...row,
+          cells,
+          flowDirection: existing.flowDirection === 'BAL' ? 'BAL' : flowDirection,
+          accountingLabel: existing.flowDirection === 'BAL' ? existing.accountingLabel : accountingLabel,
+          lineReference,
+          custodianOneInitials,
+          custodianTwoInitials,
+          tellerCoordInitials,
+        }
+        : row
+    ));
+    const aligned = alignCarriedBalances(record.book_class, patched, lineNumber);
+    const position = runningPosition(aligned.rows);
+    const amended = aligned.rows.find((row) => row.lineNumber === lineNumber);
+    await client.query(
+      `UPDATE vault_denomination_matrix_ledger
+       SET accounting_label = $1,
+           line_reference = $2,
+           flow_direction = $3,
+           custodian_one_initials = $4,
+           custodian_two_initials = $5,
+           teller_coord_initials = $6
+       WHERE book_id = $7 AND line_number = $8`,
+      [
+        amended.accountingLabel,
+        amended.lineReference,
+        amended.flowDirection,
+        amended.custodianOneInitials,
+        amended.custodianTwoInitials,
+        amended.tellerCoordInitials,
+        bookId,
+        lineNumber,
+      ],
+    );
+    await writeCells(client, amended);
+    for (const carried of aligned.carried) {
+      await writeCells(client, carried);
+    }
+    const last = aligned.rows[aligned.rows.length - 1];
+    if (last.flowDirection === 'BAL' && last.accountingLabel === 'Bal c/d' && sameMap(position, mapFromCells(last.cells))) {
+      const minors = positionByCurrency(record.book_class, last.cells);
+      for (const [currency, minor] of Object.entries(minors)) {
+        await client.query(
+          `INSERT INTO mock_core_positions
+             (tenant_id, branch_id, book_id, currency_code, amount_minor)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (tenant_id, branch_id, book_id, currency_code)
+           DO UPDATE SET amount_minor = EXCLUDED.amount_minor`,
+          [tenantId, record.branch_id, bookId, currency, minor.toString()],
+        );
+      }
+    }
+    if (owns) await client.query('COMMIT');
+    return {
+      lineNumber,
+      carriedLines: aligned.carried.map((row) => row.lineNumber),
+    };
+  } catch (error) {
+    if (owns) {
+      try { await client.query('ROLLBACK'); } catch (_rollbackError) { /* already aborted */ }
+    }
+    throw translateLedgerError(error);
+  } finally {
+    if (owns) client.release();
+  }
+}
+
 module.exports = {
   cellKey,
   composeRow,
@@ -513,6 +703,7 @@ module.exports = {
   parsePosition,
   amountsFromCells,
   insertLedgerRow,
+  amendLedgerRow,
   loadRows,
   presentRows,
   getBookView,
