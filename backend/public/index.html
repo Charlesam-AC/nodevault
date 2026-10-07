@@ -63,7 +63,7 @@
       <img class="login-mark" src="/logo.png" alt="">
       <h2>Welcome to NodeVault</h2>
       <p class="login-please">Please sign in</p>
-      <form id="password-form" class="login-card" hidden>
+      <form id="password-form" class="login-card" method="post" hidden>
         <label for="password-email">Work email</label>
         <div class="field-icon">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 7l8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
@@ -87,7 +87,7 @@
           <span class="fold-title">Microsoft Entra</span>
           <span class="fold-action"></span>
         </summary>
-        <form id="login-form">
+        <form id="login-form" method="post">
           <p class="hint" id="entra-hint">Use the bank directory assertion for this deployment.</p>
           <label for="email">Work email</label>
           <div class="field-icon">
@@ -138,16 +138,22 @@
       <section id="handover-panel" hidden class="mb-3 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm"></section>
       <p id="carry-flags" class="error"></p>
       <div id="ledger-panel">
+      <div id="sheet-suspend">
       <div class="desk-bar">
         <label class="book-date">Book date
           <select id="book-date" aria-label="Book date"></select>
         </label>
         <div id="book-tabs" class="book-tabs" role="tablist" aria-label="Treasury books"></div>
         <button type="button" id="open-close" disabled>Three-person close</button>
+        <div class="sheet-view">
+          <button type="button" id="sheet-expand" aria-pressed="false">Expand</button>
+          <button type="button" id="sheet-fullscreen" aria-pressed="false">Full screen</button>
+        </div>
       </div>
       <p id="desk-status" class="status" role="status"></p>
       <p id="book-formula" class="formula"></p>
       <div id="position-chips" class="chips"></div>
+      </div>
       <div class="ledger-margin" data-theme="paper">
         <div class="sheet-toolbar">
           <label for="ledger-theme">Sheet</label>

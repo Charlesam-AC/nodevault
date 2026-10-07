@@ -1206,6 +1206,65 @@ if (themeSelect) {
   themeSelect.addEventListener('change', () => applyLedgerTheme(themeSelect.value));
 }
 
+const ledgerPanel = document.getElementById('ledger-panel');
+const expandButton = document.getElementById('sheet-expand');
+const fullscreenButton = document.getElementById('sheet-fullscreen');
+
+function activeFullscreen() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function setSheetExpanded(on) {
+  ledgerPanel.classList.toggle('is-expanded', on);
+  document.body.classList.toggle('sheet-expanded', on);
+  expandButton.textContent = on ? 'Collapse' : 'Expand';
+  expandButton.setAttribute('aria-pressed', on ? 'true' : 'false');
+  if (typeof synchronizeHorizontalMatrixLayout === 'function') synchronizeHorizontalMatrixLayout();
+  syncSuspendedSheet();
+}
+
+function syncFullscreenButton() {
+  const on = activeFullscreen() === ledgerPanel;
+  fullscreenButton.textContent = on ? 'Exit full screen' : 'Full screen';
+  fullscreenButton.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
+function syncSuspendedSheet() {
+  const bar = document.getElementById('sheet-suspend');
+  if (!bar) return;
+  const top = bar.getBoundingClientRect().top;
+  bar.classList.toggle('is-stuck', top <= 1);
+}
+
+expandButton.addEventListener('click', () => {
+  setSheetExpanded(!ledgerPanel.classList.contains('is-expanded'));
+});
+
+fullscreenButton.addEventListener('click', async () => {
+  try {
+    if (activeFullscreen() === ledgerPanel) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      await exit.call(document);
+    } else {
+      const request = ledgerPanel.requestFullscreen || ledgerPanel.webkitRequestFullscreen;
+      if (!request) throw new Error('unavailable');
+      await request.call(ledgerPanel);
+    }
+  } catch (_error) {
+    document.getElementById('desk-status').textContent = 'Full screen is not available in this browser. Expand still opens the sheet across the window.';
+  }
+});
+
+document.addEventListener('fullscreenchange', syncFullscreenButton);
+document.addEventListener('webkitfullscreenchange', syncFullscreenButton);
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || activeFullscreen()) return;
+  if (ledgerPanel.classList.contains('is-expanded')) setSheetExpanded(false);
+});
+window.addEventListener('scroll', syncSuspendedSheet, { passive: true });
+ledgerPanel.addEventListener('scroll', syncSuspendedSheet, { passive: true });
+window.addEventListener('resize', syncSuspendedSheet);
+
 function applyPublicConfig(config) {
   const passwordForm = document.getElementById('password-form');
   const entraFold = document.getElementById('entra-fold');
