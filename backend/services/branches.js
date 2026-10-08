@@ -37,6 +37,21 @@ function canManage(actor) {
   return isMasterAdmin({ work_email: actor.email }) && !actor.actorUserId;
 }
 
+function cleanPrinter(value) {
+  if (value == null || String(value).trim() === '') return null;
+  const text = String(value).trim();
+  if (text.length > 200) throw new VaultError('INVALID_PRINTER', 'A printer target is at most 200 characters');
+  if (text === 'Vault_Master_Printer_01') {
+    throw new VaultError('INVALID_PRINTER', 'Set this branch printer. A single global printer name is not used');
+  }
+  const host = /^[^:\s/]+(?::\d{1,5})?$/;
+  const ipp = /^(ipp|http|https):\/\/\S+$/i;
+  if (!host.test(text) && !ipp.test(text)) {
+    throw new VaultError('INVALID_PRINTER', 'A printer target is a host, host:port, or an IPP URL');
+  }
+  return text;
+}
+
 function assertManager(actor) {
   if (!canManage(actor)) {
     throw new VaultError('WRONG_ROLE', 'Only the master admin can change branches', 403);
@@ -91,7 +106,8 @@ async function loadBranch(db, tenantId, branchId) {
     throw new VaultError('NOT_FOUND', 'That branch is not on this bank', 404);
   }
   const result = await db.query(
-    `SELECT branch_id, branch_code, branch_name, province, location_name, is_active, permanently_closed
+    `SELECT branch_id, branch_code, branch_name, province, location_name, is_active, permanently_closed,
+            printer_target
      FROM branches
      WHERE tenant_id = $1 AND branch_id = $2`,
     [tenantId, id],
@@ -109,6 +125,7 @@ function publicBranch(row, staff) {
     location_name: row.location_name,
     is_active: row.is_active,
     permanently_closed: Boolean(row.permanently_closed),
+    printer_target: row.printer_target || null,
     open_books: Number(row.open_books || 0),
     staff,
   };
@@ -119,6 +136,7 @@ async function listBranches(db, actor) {
   const [branches, people] = await Promise.all([
     db.query(
       `SELECT b.branch_id, b.branch_code, b.branch_name, b.province, b.location_name, b.is_active, b.permanently_closed,
+              b.printer_target,
               (
                 SELECT COUNT(*)::int FROM branch_vault_books v
                 WHERE v.tenant_id = b.tenant_id AND v.branch_id = b.branch_id AND v.status = 'OPEN'
@@ -239,6 +257,9 @@ async function updateBranch(db, actor, branchId, body) {
     await assertCanClose(db, actor.tenantId, branch.branch_id, null);
     next.permanently_closed = true;
     next.is_active = false;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'printer_target')) {
+    next.printer_target = cleanPrinter(body.printer_target);
   }
   if (Object.prototype.hasOwnProperty.call(body, 'is_active') && !next.permanently_closed) {
     if (typeof body.is_active !== 'boolean') {

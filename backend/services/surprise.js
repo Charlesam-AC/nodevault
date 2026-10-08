@@ -17,6 +17,8 @@ const {
   compareFigures,
   formatStamp,
 } = require('./narration');
+const { renderSurpriseSlip } = require('./documents');
+const { deliver } = require('./printJobs');
 
 function canConductSurprise(user) {
   if (!user) return false;
@@ -82,11 +84,33 @@ async function custodiansPresent(db, tenantId, branchId, businessDate) {
   return present;
 }
 
-async function recordSurpriseCheck(db, user, body) {
-  assertCanConduct(user);
+async function resolveCheckBranch(db, user) {
+  if (user.role === 'AUDITOR' && user.userId) {
+    const row = await db.query(
+      `SELECT current_audit_branch_id FROM nodevault_users WHERE user_id = $1 AND tenant_id = $2`,
+      [user.userId, user.tenantId],
+    );
+    const current = row.rows[0] && row.rows[0].current_audit_branch_id;
+    if (current) {
+      const assigned = await db.query(
+        `SELECT 1 FROM auditor_branches WHERE tenant_id = $1 AND user_id = $2 AND branch_id = $3`,
+        [user.tenantId, user.userId, current],
+      );
+      if (!assigned.rowCount) {
+        throw new VaultError('AUDIT_BRANCH', 'That branch is not assigned to this auditor', 403);
+      }
+      return Number(current);
+    }
+  }
   if (!user.branchId) {
     throw new VaultError('NO_BRANCH', 'This profile is not attached to a branch', 409);
   }
+  return Number(user.branchId);
+}
+
+async function recordSurpriseCheck(db, user, body) {
+  assertCanConduct(user);
+  const branchId = await resolveCheckBranch(db, user);
   const checkedAt = body.checked_at ? new Date(body.checked_at) : new Date();
   if (Number.isNaN(checkedAt.getTime())) {
     throw new VaultError('INVALID_TIME', 'The check time is not a real date');
@@ -99,7 +123,7 @@ async function recordSurpriseCheck(db, user, body) {
     `SELECT book_id, book_class, status, business_date::text AS business_date
      FROM branch_vault_books
      WHERE tenant_id = $1 AND branch_id = $2 AND business_date = $3`,
-    [user.tenantId, user.branchId, businessDate],
+    [user.tenantId, branchId, businessDate],
   );
   if (books.rowCount !== 3) {
     throw new VaultError('NO_BOOK', `There is no full set of books for ${businessDate}`, 409);
@@ -115,7 +139,10 @@ async function recordSurpriseCheck(db, user, body) {
     employeeId: user.employeeId,
     role: user.role,
   };
-  const present = await custodiansPresent(db, user.tenantId, user.branchId, businessDate);
+  const present = await custodiansPresent(db, user.tenantId, branchId, businessDate);
+  if (present.some((person) => person.employeeId === user.employeeId)) {
+    throw new VaultError('WRONG_ROLE', 'A custodian on duty cannot surprise-check that cash', 403);
+  }
   const lines = [];
   for (const bookClass of BOOK_ORDER) {
     const book = books.rows.find((item) => item.book_class === bookClass);
@@ -148,7 +175,7 @@ async function recordSurpriseCheck(db, user, body) {
        RETURNING check_id`,
       [
         user.tenantId,
-        user.branchId,
+        branchId,
         businessDate,
         checkedAt.toISOString(),
         user.userId,
@@ -268,7 +295,7 @@ async function surpriseSlip(db, tenantId, checkId) {
   const result = await db.query(
     `SELECT c.check_id, c.branch_id, c.business_date::text AS business_date, c.checked_at,
             c.checker_name, c.checker_employee_id, c.checker_role, c.custodians_present,
-            br.branch_name, br.branch_code, t.bank_name, t.logo_label
+            br.branch_name, br.branch_code, t.bank_name, t.logo_label, t.logo_file
      FROM surprise_checks c
      JOIN branches br ON br.branch_id = c.branch_id AND br.tenant_id = c.tenant_id
      JOIN bank_tenants t ON t.tenant_id = c.tenant_id
@@ -287,16 +314,33 @@ async function surpriseSlip(db, tenantId, checkId) {
   const match = checks.find((item) => item.check_id === Number(checkId));
   return {
     logo_label: result.rows[0].logo_label || result.rows[0].bank_name,
+    logo_file: result.rows[0].logo_file,
     bank_name: result.rows[0].bank_name,
     branch_name: result.rows[0].branch_name,
     branch_code: result.rows[0].branch_code,
+    branch_id: Number(result.rows[0].branch_id),
     ...match,
   };
 }
 
+async function printSurpriseSlip(db, tenantId, checkId, deps = {}) {
+  const slip = await surpriseSlip(db, tenantId, checkId);
+  const pdf = await renderSurpriseSlip({ slip, logoFile: slip.logo_file });
+  return deliver(db, {
+    tenantId,
+    branchId: slip.branch_id,
+    documentKind: 'SURPRISE_SLIP',
+    sourceRef: slip.check_id,
+    pdf,
+    deps,
+  });
+}
+
 module.exports = {
   canConductSurprise,
+  resolveCheckBranch,
   recordSurpriseCheck,
   listSurpriseChecks,
   surpriseSlip,
+  printSurpriseSlip,
 };

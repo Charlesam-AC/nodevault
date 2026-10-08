@@ -7,8 +7,17 @@ const { getLayout } = require('./layout');
 const { loadRows, rollForward, positionByCurrency, parsePosition } = require('./ledger');
 const { getOutstandingPosition } = require('./corebank');
 const { triggerSilentPrinter } = require('./print');
+const { renderClosingSheet } = require('./documents');
 const { sendClosingSheet } = require('./mail');
 const { recordAudit } = require('./audit');
+
+function closePrintFailureMode() {
+  const mode = process.env.CLOSE_PRINT_FAILURE || 'queue';
+  if (mode !== 'queue' && mode !== 'rollback') {
+    throw new Error(`Unknown CLOSE_PRINT_FAILURE ${mode}`);
+  }
+  return mode;
+}
 
 const SYMBOL = { ZMW: 'K', ZAR: 'R', USD: '$', GBP: '£', EUR: '€' };
 
@@ -124,9 +133,11 @@ async function lockBook(client, tenantId, branchId, closingPayload, deps) {
   }
 
   const bookResult = await client.query(
-    `SELECT b.book_id, b.book_class, b.status, b.business_date::text AS business_date, br.branch_name
+    `SELECT b.book_id, b.book_class, b.status, b.business_date::text AS business_date,
+            br.branch_name, br.printer_target, t.bank_name, t.logo_file
      FROM branch_vault_books b
      JOIN branches br ON br.branch_id = b.branch_id AND br.tenant_id = b.tenant_id
+     JOIN bank_tenants t ON t.tenant_id = b.tenant_id
      WHERE b.book_id = $1 AND b.tenant_id = $2 AND b.branch_id = $3
      FOR UPDATE OF b`,
     [bookId, tenantId, branchId],
@@ -187,15 +198,29 @@ async function lockBook(client, tenantId, branchId, closingPayload, deps) {
   ].filter(Boolean))];
 
   const layout = getLayout(book.book_class);
+  const signatories = [
+    { ...c1, role: 'Primary custodian' },
+    { ...c2, role: 'Secondary custodian' },
+    { ...coord, role: 'Head Teller' },
+  ];
   const document = buildSheet({
     layout,
     operatingDate,
     branchName: book.branch_name,
     position: ledgerPosition,
+    signatories,
+  });
+  const pdf = await renderClosingSheet({
+    bookClass: book.book_class,
+    operatingDate,
+    branchName: book.branch_name,
+    bankName: book.bank_name,
+    rows,
+    logoFile: book.logo_file,
     signatories: [
-      { ...c1, role: 'Primary custodian' },
-      { ...c2, role: 'Secondary custodian' },
-      { ...coord, role: 'Head Teller' },
+      { full_legal_name: c1.full_legal_name, employee_id: c1.employee_id, initials: c1.two_letter_initials, role: 'Custodian 1' },
+      { full_legal_name: c2.full_legal_name, employee_id: c2.employee_id, initials: c2.two_letter_initials, role: 'Custodian 2' },
+      { full_legal_name: coord.full_legal_name, employee_id: coord.employee_id, initials: coord.two_letter_initials, role: 'Head teller' },
     ],
   });
   const totals = Object.fromEntries(
@@ -224,8 +249,10 @@ async function lockBook(client, tenantId, branchId, closingPayload, deps) {
   const printPayload = {
     branchId,
     bookId: Number(book.book_id),
-    printerTarget: process.env.PRINTER_TARGET || 'Vault_Master_Printer_01',
+    printerTarget: book.printer_target,
+    documentKind: 'CLOSING_SHEET',
     document,
+    pdf_base64: pdf.toString('base64'),
   };
   const emailPayload = {
     to: [c1.work_email, c2.work_email],
@@ -239,7 +266,7 @@ async function lockBook(client, tenantId, branchId, closingPayload, deps) {
     [tenantId, book.book_id, JSON.stringify(printPayload), JSON.stringify(emailPayload)],
   );
 
-  return { tenantId, bookId: book.book_id };
+  return { tenantId, bookId: book.book_id, printPayload };
 }
 
 async function dispatchClosing(pool, scope, deps = {}) {
@@ -268,6 +295,15 @@ async function dispatchClosing(pool, scope, deps = {}) {
          WHERE dispatch_id = $1`,
         [job.dispatch_id],
       );
+      if (job.kind === 'PRINT') {
+        await recordAudit(pool, {
+          tenantId: scope.tenantId,
+          eventType: 'PRINT_SENT',
+          bookId: scope.bookId,
+          actorUserIds: [],
+          detail: { document_kind: 'CLOSING_SHEET', dispatch_id: Number(job.dispatch_id) },
+        });
+      }
       results.push({ id: Number(job.dispatch_id), kind: job.kind, status: 'SENT' });
     } catch (error) {
       await pool.query(
@@ -294,8 +330,63 @@ async function dispatchClosing(pool, scope, deps = {}) {
   return results;
 }
 
-// The lock commits before print or email. A dispatch failure cannot reopen the book.
+// CLOSE_PRINT_FAILURE=rollback prints before COMMIT. A failure undoes the close.
+async function executeCloseRollback(tenantId, branchId, closingPayload, deps = {}) {
+  const pool = deps.pool;
+  const client = await pool.connect();
+  let locked = null;
+  try {
+    await client.query('BEGIN');
+    locked = await lockBook(client, tenantId, branchId, closingPayload, deps);
+    const printer = deps.printer || triggerSilentPrinter;
+    try {
+      await printer(locked.printPayload);
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch (_rollbackError) { /* already closed */ }
+      await recordAudit(pool, {
+        tenantId,
+        eventType: 'CLOSE_REFUSED',
+        bookId: locked.bookId,
+        actorUserIds: [],
+        detail: {
+          reason: 'PRINT',
+          error: String(error.message || error).slice(0, 500),
+        },
+      });
+      throw new VaultError('CLOSE_REFUSED', 'The closing sheet did not print, so the book stays open', 409);
+    }
+    await client.query(
+      `UPDATE dispatch_outbox
+       SET status = 'SENT', attempts = attempts + 1, last_error = NULL, updated_at = now()
+       WHERE tenant_id = $1 AND book_id = $2 AND kind = 'PRINT' AND status = 'PENDING'`,
+      [tenantId, locked.bookId],
+    );
+    await recordAudit(client, {
+      tenantId,
+      eventType: 'PRINT_SENT',
+      bookId: locked.bookId,
+      actorUserIds: [],
+      detail: { document_kind: 'CLOSING_SHEET', mode: 'rollback' },
+    });
+    await client.query('COMMIT');
+  } catch (error) {
+    if (!error || error.code !== 'CLOSE_REFUSED') {
+      try { await client.query('ROLLBACK'); } catch (_rollbackError) { /* already closed */ }
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+  const dispatch = await dispatchClosing(pool, { tenantId, bookId: locked.bookId }, deps);
+  return { status: 'SUCCESS', book_id: Number(locked.bookId), dispatch };
+}
+
+// The lock commits before print or email unless CLOSE_PRINT_FAILURE=rollback.
+// A queued dispatch failure cannot reopen the book.
 async function executeThreePersonVaultLock(tenantId, branchId, closingPayload, deps = {}) {
+  if (closePrintFailureMode() === 'rollback') {
+    return executeCloseRollback(tenantId, branchId, closingPayload, deps);
+  }
   const pool = deps.pool;
   const client = await pool.connect();
   let committed = null;
@@ -313,8 +404,31 @@ async function executeThreePersonVaultLock(tenantId, branchId, closingPayload, d
   return { status: 'SUCCESS', book_id: Number(committed.bookId), dispatch };
 }
 
+async function reprintClosingSheet(pool, scope, deps = {}) {
+  const job = await pool.query(
+    `SELECT payload FROM dispatch_outbox
+     WHERE tenant_id = $1 AND book_id = $2 AND kind = 'PRINT'
+     ORDER BY dispatch_id DESC
+     LIMIT 1`,
+    [scope.tenantId, scope.bookId],
+  );
+  if (!job.rowCount) throw new VaultError('NOT_FOUND', 'This book has no closing sheet to reprint', 404);
+  const printer = deps.printer || triggerSilentPrinter;
+  await printer(job.rows[0].payload);
+  await recordAudit(pool, {
+    tenantId: scope.tenantId,
+    eventType: 'PRINT_SENT',
+    bookId: scope.bookId,
+    actorUserIds: [],
+    detail: { document_kind: 'CLOSING_SHEET', reprint: true },
+  });
+  return { status: 'SENT' };
+}
+
 module.exports = {
   executeThreePersonVaultLock,
   dispatchClosing,
   buildSheet,
+  reprintClosingSheet,
+  closePrintFailureMode,
 };

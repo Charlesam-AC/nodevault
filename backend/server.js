@@ -19,7 +19,7 @@ const {
   declareGazetted,
   cancelGazetted,
 } = require('./services/closures');
-const { holdersForDate, rotationView, captureHandover, takeoverSlip } = require('./services/rotation');
+const { holdersForDate, rotationView, captureHandover, takeoverSlip, printTakeoverSlip } = require('./services/rotation');
 const {
   listMovementOptions,
   addMovementOption,
@@ -28,13 +28,28 @@ const {
 } = require('./services/movements');
 const {
   canConductSurprise,
+  resolveCheckBranch,
   recordSurpriseCheck,
   listSurpriseChecks,
   surpriseSlip,
+  printSurpriseSlip,
 } = require('./services/surprise');
 const { getBookView, insertLedgerRow, amendLedgerRow, writeCarriedDown } = require('./services/ledger');
 const { recordAudit } = require('./services/audit');
-const { executeThreePersonVaultLock, dispatchClosing } = require('./services/closing');
+const { executeThreePersonVaultLock, dispatchClosing, reprintClosingSheet } = require('./services/closing');
+const { resolveLogo } = require('./services/documents');
+const {
+  assignAuditorBranches,
+  listAssignments,
+  listAuditorBranches,
+  setCurrentBranch,
+  markPending,
+  markLine,
+  getReview,
+  signOff,
+  reprintSignoff,
+} = require('./services/auditReview');
+const { createVaultSheet, reprintVaultSheet } = require('./services/vaultSheets');
 const { openBreakGlass } = require('./services/breakglass');
 const { readEntraEnabled, setEntraEnabled } = require('./services/entraToggle');
 const { actAsUser, returnToAdmin } = require('./services/actAs');
@@ -91,7 +106,14 @@ function asyncRoute(handler) {
   };
 }
 
+function assertNotAuditor(user) {
+  if (user.role === 'AUDITOR') {
+    throw new VaultError('WRONG_ROLE', 'An auditor cannot post, stage, or close a book', 403);
+  }
+}
+
 function deskCanPost(user) {
+  if (user.role === 'AUDITOR') return false;
   if (user.role === 'VAULT_CUSTODIAN' || user.role === 'HEAD_TELLER_COORDINATOR') return true;
   if (user.role === 'IT_SUPER_ADMIN' && user.breakGlassId) return true;
   return isMasterAdmin({ work_email: user.email }) && !user.actorUserId;
@@ -249,6 +271,8 @@ function buildApp(db) {
       can_act_as: isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId,
       can_configure_movements: isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId,
       can_surprise_check: canConductSurprise(req.user),
+      can_audit: req.user.role === 'AUDITOR',
+      can_vault_sheet: deskCanPost(req.user),
       acting_as: Boolean(req.user.actorUserId),
       actor_name: req.user.actorName,
     });
@@ -379,7 +403,11 @@ function buildApp(db) {
       effectiveDate: req.body.effective_date,
       posts: req.body.posts,
     });
-    res.status(201).json(captured);
+    let print = null;
+    if (captured.narrations && captured.narrations.length) {
+      print = await printTakeoverSlip(db, req.user.tenantId, captured.handoverId);
+    }
+    res.status(201).json({ ...captured, print });
   }));
 
   app.get('/api/handovers/:handoverId/slip', guard, asyncRoute(async (req, res) => {
@@ -387,16 +415,22 @@ function buildApp(db) {
     res.json(slip);
   }));
 
+  app.post('/api/handovers/:handoverId/slip/print', guard, asyncRoute(async (req, res) => {
+    const print = await printTakeoverSlip(db, req.user.tenantId, req.params.handoverId);
+    res.json(print);
+  }));
+
   app.get('/api/movement-options', guard, asyncRoute(async (req, res) => {
     const options = await listMovementOptions(db, req.user.tenantId);
     const brand = await db.query(
-      `SELECT bank_name, logo_label FROM bank_tenants WHERE tenant_id = $1`,
+      `SELECT bank_name, logo_label, logo_file FROM bank_tenants WHERE tenant_id = $1`,
       [req.user.tenantId],
     );
     res.json({
       options,
       bank_name: brand.rows[0] ? brand.rows[0].bank_name : '',
       logo_label: brand.rows[0] ? brand.rows[0].logo_label : '',
+      logo_file: brand.rows[0] ? brand.rows[0].logo_file : '',
     });
   }));
 
@@ -418,16 +452,25 @@ function buildApp(db) {
     if (logo.length < 1 || logo.length > 40) {
       throw new VaultError('INVALID_LOGO', 'The bank mark is 1 to 40 characters');
     }
-    await db.query(
-      `UPDATE bank_tenants SET logo_label = $1 WHERE tenant_id = $2`,
-      [logo, req.user.tenantId],
-    );
-    res.json({ logo_label: logo });
+    const logoFile = Object.prototype.hasOwnProperty.call(req.body, 'logo_file') && req.body.logo_file
+      ? require('path').basename(resolveLogo(req.body.logo_file))
+      : null;
+    if (logoFile) {
+      await db.query(
+        `UPDATE bank_tenants SET logo_label = $1, logo_file = $2 WHERE tenant_id = $3`,
+        [logo, logoFile, req.user.tenantId],
+      );
+    } else {
+      await db.query(
+        `UPDATE bank_tenants SET logo_label = $1 WHERE tenant_id = $2`,
+        [logo, req.user.tenantId],
+      );
+    }
+    res.json({ logo_label: logo, logo_file: logoFile });
   }));
 
   app.get('/api/surprise-checks', guard, asyncRoute(async (req, res) => {
-    const branchId = req.user.branchId;
-    if (!branchId) throw new VaultError('NO_BRANCH', 'This profile is not attached to a branch', 409);
+    const branchId = await resolveCheckBranch(db, req.user);
     const date = req.query.date;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) {
       throw new VaultError('INVALID_TIME', 'Choose the date the check belongs to');
@@ -438,12 +481,18 @@ function buildApp(db) {
 
   app.post('/api/surprise-checks', guard, asyncRoute(async (req, res) => {
     const created = await recordSurpriseCheck(db, req.user, req.body);
-    res.status(201).json(created);
+    const print = await printSurpriseSlip(db, req.user.tenantId, created.check_id);
+    res.status(201).json({ ...created, print });
   }));
 
   app.get('/api/surprise-checks/:checkId/slip', guard, asyncRoute(async (req, res) => {
     const slip = await surpriseSlip(db, req.user.tenantId, req.params.checkId);
     res.json(slip);
+  }));
+
+  app.post('/api/surprise-checks/:checkId/slip/print', guard, asyncRoute(async (req, res) => {
+    const print = await printSurpriseSlip(db, req.user.tenantId, req.params.checkId);
+    res.json(print);
   }));
 
   app.get('/api/books/:bookId', guard, asyncRoute(async (req, res) => {
@@ -454,6 +503,7 @@ function buildApp(db) {
 
   app.post('/api/books/:bookId/entries', guard, asyncRoute(async (req, res) => {
     await visibleBook(db, req.user, req.params.bookId);
+    assertNotAuditor(req.user);
     if (!deskCanPost(req.user)) {
       throw new VaultError('WRONG_ROLE', 'This desk cannot add ledger rows', 403);
     }
@@ -500,6 +550,7 @@ function buildApp(db) {
 
   app.patch('/api/books/:bookId/entries/:lineNumber', guard, asyncRoute(async (req, res) => {
     await visibleBook(db, req.user, req.params.bookId);
+    assertNotAuditor(req.user);
     if (!deskCanAmend(req.user)) {
       throw new VaultError('WRONG_ROLE', 'Only a vault custodian or the master admin can amend an open book', 403);
     }
@@ -546,6 +597,7 @@ function buildApp(db) {
 
   app.post('/api/books/:bookId/square', guard, asyncRoute(async (req, res) => {
     await visibleBook(db, req.user, req.params.bookId);
+    assertNotAuditor(req.user);
     if (!deskCanPost(req.user)) {
       throw new VaultError('WRONG_ROLE', 'This desk cannot add ledger rows', 403);
     }
@@ -573,6 +625,7 @@ function buildApp(db) {
 
   app.post('/api/books/:bookId/close', guard, asyncRoute(async (req, res) => {
     await visibleBook(db, req.user, req.params.bookId);
+    assertNotAuditor(req.user);
     const book = await db.query(
       `SELECT branch_id FROM branch_vault_books WHERE book_id = $1 AND tenant_id = $2`,
       [req.params.bookId, req.user.tenantId],
@@ -602,6 +655,64 @@ function buildApp(db) {
       bookId: req.params.bookId,
     });
     res.json({ status: 'SUCCESS', dispatch });
+  }));
+
+  app.post('/api/books/:bookId/closing-sheet/reprint', guard, asyncRoute(async (req, res) => {
+    await visibleBook(db, req.user, req.params.bookId);
+    const print = await reprintClosingSheet(db, {
+      tenantId: req.user.tenantId,
+      bookId: req.params.bookId,
+    });
+    res.json(print);
+  }));
+
+  app.get('/api/audit/branches', guard, asyncRoute(async (req, res) => {
+    res.json(await listAssignments(db, req.user));
+  }));
+
+  app.post('/api/audit/current-branch', guard, asyncRoute(async (req, res) => {
+    res.json(await setCurrentBranch(db, req.user, req.body.branch_id));
+  }));
+
+  app.get('/api/auditors/:userId/branches', guard, asyncRoute(async (req, res) => {
+    res.json(await listAuditorBranches(db, req.user, req.params.userId));
+  }));
+
+  app.post('/api/auditors/:userId/branches', guard, asyncRoute(async (req, res) => {
+    const saved = await assignAuditorBranches(db, req.user, req.params.userId, req.body.branch_ids);
+    res.json(saved);
+  }));
+
+  app.get('/api/branches/:branchId/audit', guard, asyncRoute(async (req, res) => {
+    const review = await getReview(db, req.user, req.params.branchId, req.query.from, req.query.to);
+    res.json(review);
+  }));
+
+  app.post('/api/branches/:branchId/audit/lines/:matrixTxId/mark', guard, asyncRoute(async (req, res) => {
+    const mark = await markLine(db, req.user, req.params.branchId, req.params.matrixTxId, req.body);
+    res.json(mark);
+  }));
+
+  app.post('/api/branches/:branchId/audit/pending-final-comment', guard, asyncRoute(async (req, res) => {
+    res.json(await markPending(db, req.user, req.params.branchId));
+  }));
+
+  app.post('/api/branches/:branchId/audit/signoff', guard, asyncRoute(async (req, res) => {
+    const signed = await signOff(db, req.user, req.params.branchId, req.body);
+    res.status(201).json(signed);
+  }));
+
+  app.post('/api/audit/signoffs/:signoffId/print', guard, asyncRoute(async (req, res) => {
+    res.json(await reprintSignoff(db, req.user, req.params.signoffId));
+  }));
+
+  app.post('/api/branches/:branchId/vault-sheets', guard, asyncRoute(async (req, res) => {
+    const sheet = await createVaultSheet(db, req.user, req.params.branchId, req.body);
+    res.status(201).json(sheet);
+  }));
+
+  app.post('/api/vault-sheets/:sheetId/print', guard, asyncRoute(async (req, res) => {
+    res.json(await reprintVaultSheet(db, req.user, req.params.sheetId));
   }));
 
   if (process.env.ENABLE_CORE_BANK_STUB === 'true') {

@@ -19,6 +19,8 @@ CREATE TABLE bank_tenants (
   bank_name VARCHAR(100) NOT NULL UNIQUE,
   corporate_domain VARCHAR(100) NOT NULL UNIQUE,
   logo_label VARCHAR(40) NOT NULL DEFAULT '',
+  -- Print-only image. The desk never draws this file.
+  logo_file VARCHAR(120) NOT NULL DEFAULT 'fnb-logo-placeholder.png',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -31,6 +33,8 @@ CREATE TABLE branches (
   location_name VARCHAR(120),
   is_active BOOLEAN NOT NULL DEFAULT true,
   permanently_closed BOOLEAN NOT NULL DEFAULT false,
+  -- host, host:port (port 9100 when omitted), or an IPP URL. Null until an admin sets it.
+  printer_target VARCHAR(200),
   CHECK (NOT permanently_closed OR NOT is_active),
   UNIQUE (tenant_id, branch_code),
   UNIQUE (tenant_id, branch_id)
@@ -40,6 +44,8 @@ CREATE TABLE nodevault_users (
   user_id SERIAL PRIMARY KEY,
   tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
   branch_id INT,
+  -- The one branch an auditor is working. Vault users leave this null.
+  current_audit_branch_id INT,
   work_email VARCHAR(160) NOT NULL UNIQUE,
   full_legal_name VARCHAR(120) NOT NULL,
   employee_id VARCHAR(32) NOT NULL,
@@ -56,7 +62,8 @@ CREATE TABLE nodevault_users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (tenant_id, employee_id),
   UNIQUE (tenant_id, user_id),
-  FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id)
+  FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id),
+  FOREIGN KEY (tenant_id, current_audit_branch_id) REFERENCES branches (tenant_id, branch_id)
 );
 
 -- Extra roles the master admin adds. Built-in role codes stay in the application.
@@ -354,6 +361,147 @@ CREATE TABLE dispatch_outbox (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- An auditor works many branches, one at a time.
+CREATE TABLE auditor_branches (
+  user_id INT NOT NULL,
+  branch_id INT NOT NULL,
+  tenant_id INT NOT NULL,
+  pending_final_comment_at TIMESTAMPTZ,
+  assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, branch_id),
+  FOREIGN KEY (tenant_id, user_id) REFERENCES nodevault_users (tenant_id, user_id),
+  FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id)
+);
+
+-- One mark per ledger line. A later mark before sign-off replaces the comment.
+CREATE TABLE audit_line_marks (
+  mark_id BIGSERIAL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
+  branch_id INT NOT NULL,
+  matrix_tx_id BIGINT NOT NULL UNIQUE REFERENCES vault_denomination_matrix_ledger (matrix_tx_id),
+  mark_status VARCHAR(32) NOT NULL CHECK (mark_status IN (
+    'REVIEWED', 'MATCHED', 'UNMATCHED', 'MATCHED_WITH_DIFFERENCE'
+  )),
+  comment TEXT NOT NULL DEFAULT '',
+  core_ref_kind VARCHAR(16) CHECK (core_ref_kind IS NULL OR core_ref_kind IN ('CIT_SLIP', 'ATM', 'TELLER')),
+  marked_by INT NOT NULL,
+  marked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id),
+  FOREIGN KEY (tenant_id, marked_by) REFERENCES nodevault_users (tenant_id, user_id)
+);
+
+-- Append-only. A successful print is recorded on print_jobs, not by updating this row.
+CREATE TABLE audit_signoffs (
+  signoff_id BIGSERIAL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
+  branch_id INT NOT NULL,
+  auditor_user_id INT NOT NULL,
+  range_from DATE NOT NULL,
+  range_to DATE NOT NULL,
+  end_comment TEXT NOT NULL,
+  full_legal_name VARCHAR(120) NOT NULL,
+  employee_id VARCHAR(32) NOT NULL,
+  work_email VARCHAR(160) NOT NULL,
+  system_role VARCHAR(40) NOT NULL,
+  signed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (range_to >= range_from),
+  CHECK (length(btrim(end_comment)) > 0),
+  FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id),
+  FOREIGN KEY (tenant_id, auditor_user_id) REFERENCES nodevault_users (tenant_id, user_id)
+);
+
+-- From Vault / To Vault. line_ids lists the book lines this sheet already posted.
+CREATE TABLE vault_sheets (
+  sheet_id BIGSERIAL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
+  branch_id INT NOT NULL,
+  direction VARCHAR(16) NOT NULL CHECK (direction IN ('FROM_VAULT', 'TO_VAULT')),
+  business_date DATE NOT NULL,
+  generated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  amounts JSONB NOT NULL,
+  signatories JSONB NOT NULL,
+  line_ids JSONB NOT NULL DEFAULT '{}'::jsonb,
+  printed_at TIMESTAMPTZ,
+  created_by INT NOT NULL,
+  FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id),
+  FOREIGN KEY (tenant_id, created_by) REFERENCES nodevault_users (tenant_id, user_id)
+);
+
+-- Slips and sheets that are not a single closing book. Reprint reads the source again.
+CREATE TABLE print_jobs (
+  job_id BIGSERIAL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
+  branch_id INT NOT NULL,
+  document_kind VARCHAR(32) NOT NULL CHECK (document_kind IN (
+    'CLOSING_SHEET', 'TAKEOVER_SLIP', 'SURPRISE_SLIP', 'AUDIT_SHEET', 'VAULT_SHEET'
+  )),
+  source_ref VARCHAR(64) NOT NULL,
+  printer_target VARCHAR(200),
+  status VARCHAR(16) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SENT', 'FAILED')),
+  attempts INT NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  last_error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  sent_at TIMESTAMPTZ,
+  FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id)
+);
+
+-- Core transactions for the auditor's unmatched list. Mock mode reads this table.
+CREATE TABLE mock_core_transactions (
+  core_tx_id BIGSERIAL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
+  branch_id INT NOT NULL,
+  book_class nodevault_book_class NOT NULL,
+  business_date DATE NOT NULL,
+  posted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  reference VARCHAR(64) NOT NULL,
+  description TEXT NOT NULL,
+  currency_code CHAR(3) NOT NULL,
+  amount_minor BIGINT NOT NULL CHECK (amount_minor >= 0),
+  UNIQUE (tenant_id, branch_id, book_class, reference),
+  FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id)
+);
+
+CREATE OR REPLACE FUNCTION nodevault_reject_signoff_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  RAISE EXCEPTION 'audit sign-offs are append-only';
+END;
+$$;
+
+CREATE TRIGGER audit_signoffs_append_only
+  BEFORE UPDATE OR DELETE ON audit_signoffs
+  FOR EACH ROW
+  EXECUTE FUNCTION nodevault_reject_signoff_mutation();
+
+CREATE OR REPLACE FUNCTION nodevault_freeze_audit_mark()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM audit_signoffs s
+    JOIN vault_denomination_matrix_ledger l ON l.matrix_tx_id = OLD.matrix_tx_id
+    JOIN branch_vault_books b ON b.book_id = l.book_id
+    WHERE s.tenant_id = OLD.tenant_id
+      AND s.branch_id = b.branch_id
+      AND b.business_date BETWEEN s.range_from AND s.range_to
+  ) THEN
+    RAISE EXCEPTION 'audit marks are frozen after sign-off';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER audit_line_marks_freeze
+  BEFORE UPDATE ON audit_line_marks
+  FOR EACH ROW
+  EXECUTE FUNCTION nodevault_freeze_audit_mark();
 
 -- Column catalogue for each paper book. Values are not stored here.
 -- Kwacha Total Treasury is re-issuable (A) plus coins (C).
@@ -784,23 +932,32 @@ GRANT SELECT, INSERT ON bank_tenants, branches, nodevault_users, desk_roles, sys
   gazetted_holidays, gazetted_holiday_cancellations,
   carry_forward_flags, branch_vault_books, vault_denomination_matrix_ledger,
   ledger_amount_cells, break_glass_sessions, audit_events, dispatch_outbox,
-  mock_core_positions TO nodevault_app;
+  mock_core_positions, mock_core_transactions,
+  auditor_branches, audit_line_marks, audit_signoffs, vault_sheets, print_jobs
+  TO nodevault_app;
 
 GRANT UPDATE (failed_login_count, locked_until) ON nodevault_users TO nodevault_app;
 GRANT UPDATE (
   full_legal_name, branch_id, system_role, employee_id, two_letter_initials,
-  password_hash, closing_pin_hash, is_active
+  password_hash, closing_pin_hash, is_active, current_audit_branch_id
 ) ON nodevault_users TO nodevault_app;
 GRANT UPDATE (display_name) ON desk_roles TO nodevault_app;
 GRANT DELETE ON desk_roles TO nodevault_app;
 GRANT UPDATE (period_end) ON post_assignments TO nodevault_app;
-GRANT UPDATE (logo_label) ON bank_tenants TO nodevault_app;
+GRANT UPDATE (logo_label, logo_file) ON bank_tenants TO nodevault_app;
 GRANT UPDATE (label, flow_direction, sort_order, is_active) ON movement_options TO nodevault_app;
-GRANT UPDATE (branch_code, branch_name, province, location_name, is_active, permanently_closed) ON branches TO nodevault_app;
+GRANT UPDATE (branch_code, branch_name, province, location_name, is_active, permanently_closed, printer_target) ON branches TO nodevault_app;
+GRANT UPDATE (pending_final_comment_at) ON auditor_branches TO nodevault_app;
+GRANT DELETE ON auditor_branches TO nodevault_app;
+GRANT UPDATE (mark_status, comment, core_ref_kind, marked_by, marked_at) ON audit_line_marks TO nodevault_app;
+GRANT UPDATE (printed_at, line_ids) ON vault_sheets TO nodevault_app;
+GRANT UPDATE (status, attempts, last_error, sent_at, printer_target) ON print_jobs TO nodevault_app;
 GRANT UPDATE (status, closed_at) ON branch_vault_books TO nodevault_app;
 GRANT UPDATE (initialized_at, it_admin_frozen, entra_enabled) ON system_control TO nodevault_app;
 GRANT UPDATE (status, attempts, last_error, updated_at) ON dispatch_outbox TO nodevault_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON mock_core_positions TO nodevault_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON mock_core_transactions TO nodevault_app;
+REVOKE UPDATE, DELETE, TRUNCATE ON audit_signoffs FROM nodevault_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON denomination_catalogue TO nodevault_app;
 
 REVOKE UPDATE, DELETE, TRUNCATE ON vault_denomination_matrix_ledger FROM nodevault_app;

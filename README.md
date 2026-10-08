@@ -38,13 +38,13 @@ The head teller and the two vault-custodian seats each have a schedule: weekly, 
 
 The opening roster is seeded and does not need a prior handover. The next period stays unassigned until outgoing and incoming holders acknowledge it with their closing PINs. The form records who is taking over, employee ID, initials, and the effective date. The handover log and a `HANDOVER_CAPTURED` audit row store the three books' locked Bal c/d balances. Once a business morning falls inside a period with no assignment, the ledger stays hidden until that handover is captured. A handover can be acknowledged before that morning.
 
-When that handover commits both custodian seats, the desk writes one takeover narration on each book. Nobody types it. It is not a ledger line: no denomination cells, and it does not change a balance. It is shown directly under line 1, Bal b/f, of the new period. Kwacha uses the grand total (Total Re-Issuable + Total Coins) in kwacha and ngwee. Foreign Currency and Bancs each list EUR, GBP, USD, and ZAR with that currency's own amount in words. The sentence names the two incoming custodians, then the two outgoing custodians, then the takeover date and time, then the incoming custodians again. The head teller is not in the sentence. The opening Bal b/f, a refused PIN, and a handover that does not include both custodians write none. The audit event is `TAKEOVER_NARRATED`. The takeover slip prints each book's total brought forward in bold, the amount in words, and the narration, with signature lines for the two handing over and the two taking over. The head teller is printed on the slip and does not sign.
+When that handover commits both custodian seats, the desk writes one takeover narration on each book. Nobody types it. It is not a ledger line: no denomination cells, and it does not change a balance. It is shown directly under line 1, Bal b/f, of the new period. Kwacha uses the grand total (Total Re-Issuable + Total Coins) in kwacha and ngwee. Foreign Currency and Bancs each list EUR, GBP, USD, and ZAR with that currency's own amount in words. The sentence names the two incoming custodians, then the two outgoing custodians, then the takeover date and time, then the incoming custodians again. The head teller is not in the sentence. The opening Bal b/f, a refused PIN, and a handover that does not include both custodians write none. The audit event is `TAKEOVER_NARRATED`. The takeover slip is one A4 portrait page for the whole takeover, not one page per book. It prints each book's total brought forward in bold, the amount in words, and the narration, with signature lines for the two custodians handing over and the two taking over. The head teller is not on the slip and does not sign. The API sends it to that branch's printer after the handover commits. A printer failure leaves the narrations in place, and a reprint does not write them again.
 
 ## Surprise cash check
 
 An auditor or the regional operations manager can record a surprise cash check on any day, at any time, against an open book or a book that is already `BALANCED_CLOSED`. The master admin can record one only while not acting as someone else, so the desk can be demonstrated. A vault custodian, the head teller, a teller, and a branch manager cannot: the count has to come from someone who is not holding the cash. The check is stored on its own. It is not a ledger movement, and Bal b/f, Bal b/d, and Bal c/d stay as they were.
 
-The record keeps the checker's full legal name, employee ID, role, and the date and time, the custodians on duty (named as present; they do not sign), and each book's system position beside the counted total. A match uses the correct-as sentence. A difference uses the same sentence and says short by or over by, currency by currency, each amount in words. The slip shows the tenant's bank mark (FNB on the demo, and the master admin can change that mark) and one signature line, for the checker. The auditor's review lists the check at the date and time it happened.
+The record keeps the checker's full legal name, employee ID, role, and the date and time, the custodians on duty (named as present; they do not sign), and each book's system position beside the counted total. A match uses the correct-as sentence. A difference uses the same sentence and says short by or over by, currency by currency, each amount in words. The printed slip is A4 portrait. It carries the tenant logo image and one signature line, for the checker. Custodians are named as present and have no signature line. A printer failure does not remove the check. The auditor's review lists the check on the Lusaka date it happened, not on the next morning.
 
 ## In or Out
 
@@ -62,6 +62,34 @@ Relief holders in the demo directory, same password and closing PIN as the other
 
 Money is integer minor units (1/100) from the page through PostgreSQL `BIGINT`. Core-bank amounts are decimal strings. Nothing in the close path uses floating point.
 
+## Printing
+
+Every printed document goes to a normal A4 office printer from the API process. The desk does not open a browser print dialog, and it does not draw the bank logo. An admin sets `printer_target` on each branch (host, host:port, or an IPP URL). There is no global printer name. `PRINTER_MODE=stub` writes the PDF under `PRINT_STUB_DIR` (default `/tmp/nodevault-prints`) and still requires that branch target. `raw` sends the PDF to port 9100. `ipp` sends an IPP Print-Job. `network` remains the older HTTP POST to `PRINTER_URL`.
+
+The logo is a PNG named on the tenant (`logo_file`, default `fnb-logo-placeholder.png` in `backend/assets/logos`). The placeholder is marked as a placeholder. The master admin can swap the file name from the desk; the file has to sit in that folder. Totals are bold. Each signature is a blank line, then the word Signature, then the person's name and employee ID.
+
+| Document | Page | Who signs |
+| --- | --- | --- |
+| Closing sheet | A4 landscape | Custodian 1, custodian 2, head teller |
+| Takeover slip | A4 portrait | The two handing over and the two taking over |
+| Surprise cash check | A4 portrait | The checker only |
+| Audit sheet | A4 portrait | The auditor only |
+| From Vault / To Vault | A4 landscape | Both custodians and the head teller |
+
+The closing sheet is the only document that is also emailed. The subject stays `NodeVault closing sheet · {book title} · {DD/MM/YYYY}`. By default `CLOSE_PRINT_FAILURE=queue`: the book stays `BALANCED_CLOSED` and the print is queued for retry, with an audit entry. Set `CLOSE_PRINT_FAILURE=rollback` to refuse the close and roll the book back to `OPEN` when the printer rejects the sheet. The other four documents never roll their action back. Reprint sends the same document again and does not insert a second ledger line or a second narration.
+
+Printed denomination grids omit the USD 2 column and any old Kwacha currency column. A USD 2 amount that is still on the book is kept inside TOTAL USD, so the printed total still matches the book. The on-screen foreign and Bancs sheets still show the USD 2 column. Kwacha prints TOTAL TREASURY (re-issuable notes plus coins). Coin codes print as N50, N10, and N5.
+
+From Vault posts one Out Vault line on each book whose typed total is not zero, labelled Out Vault. To Vault posts In Vault. A zero book is printed at zero and gets no book line. The sheet says it was generated before the vault was opened. If the printer fails, the lines stay and `printed_at` stays empty until a reprint succeeds.
+
+## Auditor review
+
+The master admin assigns an auditor to many branches. The auditor works one current branch at a time. Switching is allowed when the current branch is Reviewed, or when it is marked pending final comment. The first selection needs no prior branch. Reviewed means every ledger line on the three books falls inside some signed range and has a mark. Pending final comment lets the auditor move on; it does not sign off and it does not post.
+
+The review lists every ledger line in the date range, including From Vault and To Vault, every takeover narration, every close, and every surprise check. A line can be marked reviewed with no comment. A second mark before sign-off replaces the comment. Statuses are reviewed, matched, unmatched, and matched with difference. Sign-off needs every line in the range marked and a non-blank end-of-audit comment. The sign-off copies the auditor's name, employee ID, email, and role, and it is append-only. The demo auditor is `auditor.desk@demo-bank.example`. An auditor cannot post, amend, square, or close a book.
+
+The audit sheet prints the logo, branch, date range, and end comment, then for each book and currency the physical count from the latest surprise check in the range (blank when there is none), the book position, and the core outstanding balance. Then the lines that have a comment, the core transactions in the range with no book line, and the count of lines marked reviewed with no comment. The auditor signs. A printer failure does not undo the sign-off.
+
 ## Run locally
 
 ```bash
@@ -72,7 +100,7 @@ docker compose up --build
 
 The API and the desk are at [http://127.0.0.1:8080](http://127.0.0.1:8080). Postgres is published on port 54329 for the test suite. `docker compose up` is healthy when both `nodevault-api` and `nodevault-db` report healthy.
 
-A volume created before directory passwords existed does not have `password_hash`. A volume created before non-working days does not have the closure tables. Recreate it with `docker compose down -v && docker compose up --build`, or apply `database/03-working-calendar.sql` on the existing database.
+A volume created before directory passwords existed does not have `password_hash`. A volume created before non-working days does not have the closure tables. Recreate it with `docker compose down -v && docker compose up --build`, or apply `database/03-working-calendar.sql` and then `database/04-printing.sql` on the existing database. The printing file adds the branch printer, the logo file, auditor assignments, vault sheets, and print jobs.
 
 Demo sign-in (only when `SEED_DEMO_DATA=true`):
 
@@ -145,7 +173,10 @@ Copy `.env.example`. Do not commit `.env`.
 | `MOCK_ENTRA_ASSERTION` | Shared local stand-in for an Entra sign-in |
 | `CORE_BANK_MODE` | `mock` reads `mock_core_positions`. `http` GETs `${CORE_BANK_API_URL}/v1/position/:branchId` |
 | `CORE_BANK_API_URL` | Core banking base URL. Amounts must be decimal strings, not JSON numbers |
-| `PRINTER_MODE` / `PRINTER_TARGET` / `PRINTER_URL` | `stub` logs the job. `network` POSTs the raw sheet |
+| `PRINTER_MODE` | `stub` writes the PDF to disk. `raw` sends it to the branch `printer_target`. `ipp` sends an IPP Print-Job. `network` POSTs to `PRINTER_URL` |
+| `PRINT_STUB_DIR` | Where stub mode writes PDFs. Default `/tmp/nodevault-prints` |
+| `CLOSE_PRINT_FAILURE` | `queue` (default) keeps the book closed and retries. `rollback` refuses the close |
+| `PRINTER_URL` | Used only when `PRINTER_MODE=network` |
 | `MAIL_MODE` / `SMTP_*` / `ROM_EMAIL` | `stub` logs the closing email. `smtp` sends it |
 | `SEED_DEMO_DATA` / `DEMO_CLOSING_PIN` | Load the sample branch. The PIN is dev-only |
 
@@ -159,7 +190,7 @@ Copy `.env.example`. Do not commit `.env`.
 - Closing PINs live in `closing_pin_hash`. Directory passwords live in `password_hash`. The two hashes are produced separately and the demo values are different secrets.
 - Nightly close needs two distinct active `VAULT_CUSTODIAN` users and the head teller (`HEAD_TELLER_COORDINATOR`) assigned on the rotation calendar for that operating date, all in the same tenant. The certified total must match the book and the core position exactly, per currency.
 - The master admin can add, rename, and remove extra roles. A new role is a reader, a branch administrator, or a branch manager for one branch. Built-in roles stay, and a role can be removed only when nobody holds it. Branch Administrator and Branch Manager see that branch's three books. The administrator can set one non-working day there. The manager can also change teller and branch roles on that branch, and can soft-close or reopen it.
-- The book row is locked, the closure is audited, and the print/email intent is written in the same transaction. The printer and the mailer run only after `COMMIT`. If either fails, the book stays `BALANCED_CLOSED` and the outbox records a retry.
+- The book row is locked, the closure is audited, and the print/email intent is written in the same transaction. With `CLOSE_PRINT_FAILURE=queue` (the default) the printer and the mailer run only after `COMMIT`. If either fails, the book stays `BALANCED_CLOSED` and the outbox records a retry. `CLOSE_PRINT_FAILURE=rollback` sends the closing PDF before commit and rolls the close back when the printer rejects it. The email still waits until a close has committed.
 - Ledger lines, amount cells, and audit events are append-only (triggers, plus no update/delete/truncate for the API role). Closed books reject new lines. Books cannot be deleted. `ON DELETE RESTRICT` keeps history attached.
 - After initialisation the IT super admin cannot sign in alone. Break-glass requires both active vault custodians at once and expires after 60 minutes. The session is audited.
 - The API does not connect as the database superuser.
@@ -169,8 +200,8 @@ Copy `.env.example`. Do not commit `.env`.
 - The PDF table image omitted middle denomination columns. The sample still totals K1,656,515.00, R25,000.00, and $8,000.00. Unpublished Kwacha cells that make those totals true are listed in `backend/fixtures/sampleLedger.js`.
 - `Bal b/d` in the sample is a cash-in movement. `Bal b/f` and `Bal c/d` are position rows.
 - Old Currency Notes (B) and the non-re-issuable notes group are omitted from the Kwacha book. Grand Total is re-issuable notes plus coins.
-- USD 2 is a real column on the foreign book. EUR and GBP columns are zero in the specification sample and carry their own figures on the Bancs sample.
-- Silent printing is a server-side dispatch after commit (`PRINTER_MODE=stub` or `network`). It does not run inside the browser.
+- USD 2 stays a column on the on-screen foreign and Bancs books. Printed grids omit that column and keep any stored USD 2 amount inside TOTAL USD. EUR and GBP columns are zero in the specification sample and carry their own figures on the Bancs sample.
+- Printing is a server-side A4 PDF for the branch named in `printer_target`. The desk does not open a print dialog. The bank logo is on every printed page and on no screen. The closing sheet is landscape because the book is wide. Vault sheets are landscape. The takeover slip, surprise slip, and audit sheet are portrait.
 - Bancs has no separate photographed sheet, so it reuses the foreign-notes layout on its own book.
 - A branch holds one book of each of the three classes per business date.
 - Carry-forward treats Saturday as a trading day. Sunday, any weekday omitted from `TRADING_WEEKDAYS`, the Zambian public-holiday calendar, `BANK_HOLIDAYS`, and closures for that branch are skipped. The seeded 3 October 2026 sample is Saturday's locked Bal c/d and the source of Monday 5 October's Bal b/f. Friday's locked Bal c/d is the source of Saturday's Bal b/f. Monday 5 October 2026 is not a public holiday.
@@ -190,6 +221,11 @@ backend/package.json
 backend/server.js
 backend/middleware/auth.js
 backend/services/ledger.js
+backend/services/documents.js
 backend/services/print.js
+backend/services/printJobs.js
+backend/services/auditReview.js
+backend/services/vaultSheets.js
+backend/assets/logos/    print-only tenant logo, including the FNB placeholder
 backend/public/          ledger desk, including the font-scaling rule
 ```

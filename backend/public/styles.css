@@ -2055,11 +2055,27 @@ dialog.slip {
   color: #102833;
 }
 dialog.slip article { margin: 0; }
-.slip-logo {
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  font-size: 1.4rem;
-  margin: 0 0 0.2rem;
+.audit-panel, .vault-sheet-panel, #audit-panel, #vault-sheet-panel {
+  background: #ffffff;
+  color: #102833;
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  margin-top: 0.7rem;
+}
+.audit-line, .vault-book {
+  border: 1px solid #d5e4e2;
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  margin: 0.45rem 0;
+}
+.vault-books {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+.audit-branches, .vault-actions, .audit-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0; }
+@media (max-width: 800px) {
+  .vault-books { grid-template-columns: 1fr; }
 }
 .slip-bank { font-size: 1.15rem; font-weight: 700; margin: 0; }
 .slip-branch, .slip-when, .slip-checker, .slip-aside { margin: 0.2rem 0; }

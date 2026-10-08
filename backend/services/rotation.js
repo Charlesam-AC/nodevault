@@ -1,6 +1,8 @@
 const bcrypt = require('bcryptjs');
 const { VaultError } = require('./errors');
 const { recordAudit } = require('./audit');
+const { renderTakeoverSlip } = require('./documents');
+const { deliver } = require('./printJobs');
 const { loadRows, amountsFromCells, composeRow, positionByCurrency } = require('./ledger');
 const { figuresFromMinors, takeoverSentence, formatStamp, nameList } = require('./narration');
 const {
@@ -375,7 +377,7 @@ async function takeoverSlip(db, tenantId, handoverId) {
   const result = await db.query(
     `SELECT h.handover_id, h.branch_id, h.effective_date::text AS effective_date,
             h.created_at, h.detail,
-            br.branch_name, br.branch_code, t.bank_name, t.logo_label
+            br.branch_name, br.branch_code, t.bank_name, t.logo_label, t.logo_file
      FROM handover_logs h
      JOIN branches br ON br.branch_id = h.branch_id AND br.tenant_id = h.tenant_id
      JOIN bank_tenants t ON t.tenant_id = h.tenant_id
@@ -405,35 +407,34 @@ async function takeoverSlip(db, tenantId, handoverId) {
       totals: row.totals,
     };
   });
-  let headTeller = seat('HEAD_TELLER');
-  if (!headTeller) {
-    const covering = await assignmentCovering(
-      db, tenantId, log.branch_id, 'HEAD_TELLER', log.effective_date,
-    );
-    headTeller = covering ? {
-      incoming: {
-        fullLegalName: covering.full_legal_name,
-        employeeId: covering.employee_id,
-      },
-    } : null;
-  }
   return {
     handover_id: Number(log.handover_id),
+    branch_id: Number(log.branch_id),
     bank_name: log.bank_name,
     logo_label: log.logo_label,
+    logo_file: log.logo_file,
     branch_name: log.branch_name,
     branch_code: log.branch_code,
     effective_date: log.effective_date,
     taken_over_at: formatStamp(log.created_at),
     handing_over: [seat('CUSTODIAN_ONE').outgoing, seat('CUSTODIAN_TWO').outgoing],
     taking_over: [seat('CUSTODIAN_ONE').incoming, seat('CUSTODIAN_TWO').incoming],
-    head_teller: headTeller ? {
-      fullLegalName: headTeller.incoming.fullLegalName,
-      employeeId: headTeller.incoming.employeeId,
-    } : null,
     books,
     signature_names: nameList([seat('CUSTODIAN_ONE').incoming, seat('CUSTODIAN_TWO').incoming]),
   };
+}
+
+async function printTakeoverSlip(db, tenantId, handoverId, deps = {}) {
+  const slip = await takeoverSlip(db, tenantId, handoverId);
+  const pdf = await renderTakeoverSlip({ slip, logoFile: slip.logo_file });
+  return deliver(db, {
+    tenantId,
+    branchId: slip.branch_id,
+    documentKind: 'TAKEOVER_SLIP',
+    sourceRef: slip.handover_id,
+    pdf,
+    deps,
+  });
 }
 
 module.exports = {
@@ -444,4 +445,5 @@ module.exports = {
   captureHandover,
   lockedCarrySnapshot,
   takeoverSlip,
+  printTakeoverSlip,
 };

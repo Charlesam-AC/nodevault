@@ -1035,25 +1035,28 @@ function showSlip(dialogId, bodyId, node) {
   document.getElementById(dialogId).showModal();
 }
 
-function printOpenSlip() {
-  document.body.classList.add('is-slip');
-  window.print();
-  document.body.classList.remove('is-slip');
+async function sendSlipToPrinter(printPath) {
+  const note = document.getElementById('desk-status');
+  try {
+    const result = await api(printPath, { method: 'POST' });
+    if (note) {
+      note.textContent = result.status === 'SENT'
+        ? 'Sent to the branch printer.'
+        : `The branch printer did not take it. ${result.error || 'It stays queued.'}`;
+    }
+  } catch (error) {
+    if (note) note.textContent = error.message;
+  }
 }
 
 function showTakeoverSlip(slip) {
+  document.getElementById('takeover-slip').dataset.printPath = `/api/handovers/${slip.handover_id}/slip/print`;
   const root = document.createElement('div');
   root.append(
     paragraph(slip.bank_name, 'slip-bank'),
     paragraph(`${slip.branch_name} · ${slip.branch_code}`, 'slip-branch'),
     paragraph(`Takeover ${slip.taken_over_at}`, 'slip-when'),
   );
-  if (slip.head_teller) {
-    root.appendChild(paragraph(
-      `Head teller ${personLine(slip.head_teller)}. Printed for the record. Does not sign.`,
-      'slip-aside',
-    ));
-  }
   for (const book of slip.books) {
     const block = document.createElement('section');
     block.className = 'slip-book';
@@ -1087,12 +1090,9 @@ async function openTakeoverSlip(handoverId) {
 }
 
 function showSurpriseSlip(slip) {
+  document.getElementById('surprise-slip').dataset.printPath = `/api/surprise-checks/${slip.check_id}/slip/print`;
   const root = document.createElement('div');
-  const mark = document.createElement('p');
-  mark.className = 'slip-logo';
-  mark.textContent = slip.logo_label || slip.bank_name;
   root.append(
-    mark,
     paragraph(slip.bank_name, 'slip-bank'),
     paragraph(`${slip.branch_name} · ${slip.branch_code}`, 'slip-branch'),
     paragraph(`Surprise cash check ${slip.checked_at_display}`, 'slip-when'),
@@ -1123,6 +1123,343 @@ function showSurpriseSlip(slip) {
     employeeId: slip.checker_employee_id,
   }]));
   showSlip('surprise-slip', 'surprise-slip-body', root);
+}
+
+async function openAuditorBranches(user, card) {
+  const existing = card.querySelector('.auditor-branches');
+  if (existing) {
+    existing.remove();
+    return;
+  }
+  const box = document.createElement('form');
+  box.className = 'auditor-branches';
+  const note = document.createElement('p');
+  note.className = 'staff-meta';
+  note.textContent = 'One branch at a time. They mark the current branch reviewed or pending final comment before moving.';
+  box.appendChild(note);
+  const [directory, assigned] = await Promise.all([
+    api('/api/branches'),
+    api(`/api/auditors/${user.user_id}/branches`),
+  ]);
+  const chosen = new Set((assigned.branch_ids || []).map(String));
+  for (const branch of directory.branches || []) {
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.value = String(branch.branch_id);
+    input.checked = chosen.has(String(branch.branch_id));
+    label.append(input, document.createTextNode(` ${branch.branch_name}`));
+    box.appendChild(label);
+  }
+  const save = document.createElement('button');
+  save.type = 'submit';
+  save.textContent = 'Save auditor branches';
+  box.appendChild(save);
+  box.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const branch_ids = [...box.querySelectorAll('input:checked')].map((input) => Number(input.value));
+    note.textContent = '';
+    try {
+      await api(`/api/auditors/${user.user_id}/branches`, {
+        method: 'POST',
+        body: JSON.stringify({ branch_ids }),
+      });
+      note.textContent = 'Those branches are assigned.';
+    } catch (error) {
+      note.textContent = error.message;
+    }
+  });
+  card.appendChild(box);
+}
+
+const VAULT_FIELDS = {
+  KWACHA_TREASURY: [
+    ['REISSUABLE', 'K500', 'K500'], ['REISSUABLE', 'K200', 'K200'], ['REISSUABLE', 'K100', 'K100'],
+    ['REISSUABLE', 'K50', 'K50'], ['REISSUABLE', 'K20', 'K20'], ['REISSUABLE', 'K10', 'K10'],
+    ['COINS', 'K5', 'K5'], ['COINS', 'K2', 'K2'], ['COINS', 'K1', 'K1'],
+    ['COINS', '50n', 'N50'], ['COINS', '10n', 'N10'], ['COINS', '5n', 'N5'],
+  ],
+  FOREIGN_CURRENCY: [
+    ['EUR', '500', 'EUR 500'], ['EUR', '200', 'EUR 200'], ['EUR', '100', 'EUR 100'], ['EUR', '50', 'EUR 50'],
+    ['EUR', '20', 'EUR 20'], ['EUR', '10', 'EUR 10'], ['EUR', '5', 'EUR 5'],
+    ['GBP', '50', 'GBP 50'], ['GBP', '20', 'GBP 20'], ['GBP', '10', 'GBP 10'], ['GBP', '5', 'GBP 5'],
+    ['USD', '100', 'USD 100'], ['USD', '50', 'USD 50'], ['USD', '20', 'USD 20'], ['USD', '10', 'USD 10'],
+    ['USD', '5', 'USD 5'], ['USD', '1', 'USD 1'],
+    ['ZAR', '200', 'ZAR 200'], ['ZAR', '100', 'ZAR 100'], ['ZAR', '50', 'ZAR 50'], ['ZAR', '20', 'ZAR 20'],
+    ['ZAR', '10', 'ZAR 10'],
+  ],
+};
+
+function holderId(postCode) {
+  const post = (state.rotation && state.rotation.posts || []).find((item) => item.postCode === postCode);
+  return post && post.current && !post.current.unassigned ? post.current.userId : '';
+}
+
+function renderVaultSheet(desk) {
+  const panel = document.getElementById('vault-sheet-panel');
+  if (!panel) return;
+  const allowed = Boolean(state.me && state.me.can_vault_sheet && desk && desk.deskOpen && state.books.length);
+  panel.hidden = !allowed;
+  panel.replaceChildren();
+  if (!allowed) return;
+  const form = document.createElement('form');
+  form.id = 'vault-sheet-form';
+  const title = document.createElement('h3');
+  title.textContent = 'From Vault / To Vault';
+  const lead = document.createElement('p');
+  lead.className = 'hint';
+  lead.textContent = 'Type the cash by denomination. A book left at zero is printed at zero and does not post a line. The sheet goes to this branch’s A4 printer, landscape, before the vault is opened.';
+  const direction = document.createElement('select');
+  direction.id = 'vault-direction';
+  for (const [value, label] of [['FROM_VAULT', 'From Vault'], ['TO_VAULT', 'To Vault']]) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    direction.appendChild(option);
+  }
+  const books = document.createElement('div');
+  books.className = 'vault-books';
+  const classes = [
+    ['KWACHA_TREASURY', 'Kwacha Treasury Book'],
+    ['FOREIGN_CURRENCY', 'Foreign Currency Treasury Book'],
+    ['BANCS_TREASURY', 'Bancs Treasury Book'],
+  ];
+  for (const [bookClass, label] of classes) {
+    const block = document.createElement('section');
+    block.className = 'vault-book';
+    const heading = document.createElement('h4');
+    heading.textContent = label;
+    block.appendChild(heading);
+    const fields = bookClass === 'BANCS_TREASURY' ? VAULT_FIELDS.FOREIGN_CURRENCY : VAULT_FIELDS[bookClass];
+    for (const [channel, code, name] of fields) {
+      const row = document.createElement('label');
+      row.textContent = name;
+      const input = document.createElement('input');
+      input.inputMode = 'decimal';
+      input.placeholder = '0.00';
+      input.dataset.book = bookClass;
+      input.dataset.channel = channel;
+      input.dataset.code = code;
+      row.appendChild(input);
+      block.appendChild(row);
+    }
+    books.appendChild(block);
+  }
+  const pins = document.createElement('div');
+  pins.className = 'entry-meta';
+  const pinField = (id, label, value) => {
+    const wrap = document.createElement('label');
+    wrap.textContent = label;
+    const input = document.createElement('input');
+    input.id = id;
+    input.value = value == null ? '' : String(value);
+    wrap.appendChild(input);
+    return wrap;
+  };
+  pins.append(
+    pinField('vault-c1', 'Custodian 1 id', holderId('CUSTODIAN_ONE')),
+    pinField('vault-c1-pin', 'Custodian 1 PIN', ''),
+    pinField('vault-c2', 'Custodian 2 id', holderId('CUSTODIAN_TWO')),
+    pinField('vault-c2-pin', 'Custodian 2 PIN', ''),
+    pinField('vault-coord', 'Head teller id', holderId('HEAD_TELLER')),
+    pinField('vault-coord-pin', 'Head teller PIN', ''),
+  );
+  const error = document.createElement('p');
+  error.id = 'vault-sheet-error';
+  error.className = 'error';
+  error.setAttribute('role', 'alert');
+  const submit = document.createElement('button');
+  submit.type = 'submit';
+  submit.textContent = 'Post and print the sheet';
+  form.append(title, lead, direction, books, pins, error, submit);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    error.textContent = '';
+    const payloadBooks = {};
+    for (const input of form.querySelectorAll('input[data-book]')) {
+      const value = input.value.trim();
+      if (!value) continue;
+      const book = payloadBooks[input.dataset.book] || {};
+      const channel = book[input.dataset.channel] || {};
+      channel[input.dataset.code] = value;
+      book[input.dataset.channel] = channel;
+      payloadBooks[input.dataset.book] = book;
+    }
+    try {
+      const created = await api(`/api/branches/${state.books[0].branch_id}/vault-sheets`, {
+        method: 'POST',
+        body: JSON.stringify({
+          direction: direction.value,
+          operating_date: state.businessDate,
+          books: payloadBooks,
+          c1_id: Number(document.getElementById('vault-c1').value),
+          c1_pin: document.getElementById('vault-c1-pin').value,
+          c2_id: Number(document.getElementById('vault-c2').value),
+          c2_pin: document.getElementById('vault-c2-pin').value,
+          coord_id: Number(document.getElementById('vault-coord').value),
+          coord_pin: document.getElementById('vault-coord-pin').value,
+        }),
+      });
+      error.textContent = created.print && created.print.status === 'SENT'
+        ? 'The sheet is on the branch printer.'
+        : 'The lines are on the books. The printer did not take the sheet, so it can be sent again.';
+      if (state.book && state.book.book) await openBook(state.book.book.book_id);
+    } catch (err) {
+      error.textContent = err.message;
+    }
+  });
+  panel.appendChild(form);
+}
+
+async function renderAudit() {
+  const panel = document.getElementById('audit-panel');
+  if (!panel) return;
+  if (!state.me || !state.me.can_audit) {
+    panel.hidden = true;
+    panel.replaceChildren();
+    return;
+  }
+  panel.hidden = false;
+  panel.replaceChildren();
+  const assignment = await api('/api/audit/branches');
+  const title = document.createElement('h3');
+  title.textContent = 'Audit review';
+  const lead = document.createElement('p');
+  lead.className = 'hint';
+  lead.textContent = 'One branch at a time. Mark every line, then sign the end-of-audit comment. The audit sheet prints on that branch’s A4 printer. The logo is on the sheet, not on this screen.';
+  const switches = document.createElement('div');
+  switches.className = 'audit-branches';
+  for (const branch of assignment.branches) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = branch.branch_id === assignment.current_audit_branch_id
+      ? `${branch.branch_name} (current)`
+      : branch.branch_name;
+    button.addEventListener('click', async () => {
+      lead.textContent = '';
+      try {
+        await api('/api/audit/current-branch', {
+          method: 'POST',
+          body: JSON.stringify({ branch_id: branch.branch_id }),
+        });
+        await renderAudit();
+      } catch (error) {
+        lead.textContent = error.message;
+      }
+    });
+    switches.appendChild(button);
+  }
+  const from = document.createElement('input');
+  from.type = 'date';
+  from.value = state.businessDate || '';
+  const to = document.createElement('input');
+  to.type = 'date';
+  to.value = state.businessDate || '';
+  const load = document.createElement('button');
+  load.type = 'button';
+  load.textContent = 'Load this range';
+  const linesHost = document.createElement('div');
+  linesHost.className = 'audit-lines';
+  const pending = document.createElement('button');
+  pending.type = 'button';
+  pending.textContent = 'Pending final comment';
+  const comment = document.createElement('textarea');
+  comment.rows = 3;
+  comment.placeholder = 'End of audit comment';
+  const sign = document.createElement('button');
+  sign.type = 'button';
+  sign.textContent = 'Sign off and print';
+  const status = document.createElement('p');
+  status.className = 'staff-meta';
+  pending.addEventListener('click', async () => {
+    status.textContent = '';
+    try {
+      await api(`/api/branches/${assignment.current_audit_branch_id}/audit/pending-final-comment`, { method: 'POST' });
+      status.textContent = 'Marked pending final comment. The branch is not signed off.';
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  });
+  load.addEventListener('click', async () => {
+    linesHost.replaceChildren();
+    status.textContent = '';
+    try {
+      const review = await api(`/api/branches/${assignment.current_audit_branch_id}/audit?from=${from.value}&to=${to.value}`);
+      if (!review.lines.length) linesHost.appendChild(paragraph('No ledger lines in this range.'));
+      for (const line of review.lines) {
+        const card = document.createElement('article');
+        card.className = 'audit-line';
+        const summary = document.createElement('p');
+        summary.textContent = `${line.book_title} · line ${line.line_number} · ${line.date_display} · ${line.accounting_label}`;
+        const select = document.createElement('select');
+        for (const [value, label] of [
+          ['REVIEWED', 'Reviewed'],
+          ['MATCHED', 'Matched'],
+          ['UNMATCHED', 'Unmatched'],
+          ['MATCHED_WITH_DIFFERENCE', 'Matched with a difference'],
+        ]) {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = label;
+          if (line.mark_status === value) option.selected = true;
+          select.appendChild(option);
+        }
+        const kind = document.createElement('select');
+        for (const [value, label] of [['', 'No core reference'], ['CIT_SLIP', 'CIT slip'], ['ATM', 'ATM'], ['TELLER', 'Teller']]) {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = label;
+          if ((line.core_ref_kind || '') === value) option.selected = true;
+          kind.appendChild(option);
+        }
+        const note = document.createElement('input');
+        note.value = line.comment || '';
+        note.placeholder = 'Comment, optional';
+        const save = document.createElement('button');
+        save.type = 'button';
+        save.textContent = 'Save mark';
+        save.addEventListener('click', async () => {
+          status.textContent = '';
+          try {
+            await api(`/api/branches/${assignment.current_audit_branch_id}/audit/lines/${line.matrix_tx_id}/mark`, {
+              method: 'POST',
+              body: JSON.stringify({
+                status: select.value,
+                comment: note.value,
+                core_ref_kind: kind.value,
+              }),
+            });
+            status.textContent = `Line ${line.line_number} marked.`;
+          } catch (error) {
+            status.textContent = error.message;
+          }
+        });
+        card.append(summary, select, kind, note, save);
+        linesHost.appendChild(card);
+      }
+      const physical = review.totals.map((row) => (
+        `${row.currency} physical ${row.physical_minor == null ? 'blank' : row.physical_minor}`
+      )).join(' · ');
+      linesHost.appendChild(paragraph(physical));
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  });
+  sign.addEventListener('click', async () => {
+    status.textContent = '';
+    try {
+      const signed = await api(`/api/branches/${assignment.current_audit_branch_id}/audit/signoff`, {
+        method: 'POST',
+        body: JSON.stringify({ from: from.value, to: to.value, comment: comment.value }),
+      });
+      status.textContent = signed.print && signed.print.status === 'SENT'
+        ? 'Signed off. The audit sheet is on the branch printer.'
+        : 'Signed off. The printer did not take the sheet, and the sign-off still stands.';
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  });
+  panel.append(title, lead, switches, from, to, load, linesHost, pending, comment, sign, status);
 }
 
 function renderMovementOptions() {
@@ -1508,6 +1845,14 @@ function renderStaffList() {
         restore.addEventListener('click', () => restoreStaffMember(user));
         actions.appendChild(restore);
       }
+      if (user.system_role === 'AUDITOR' && user.is_active) {
+        const auditBranches = document.createElement('button');
+        auditBranches.type = 'button';
+        auditBranches.className = 'staff-quiet';
+        auditBranches.textContent = 'Audit branches';
+        auditBranches.addEventListener('click', () => openAuditorBranches(user, card));
+        actions.appendChild(auditBranches);
+      }
       card.appendChild(actions);
     } else if (roleEditable) {
       const actions = document.createElement('div');
@@ -1646,7 +1991,12 @@ async function renderBranches() {
         ? names[0]
         : `${names.length} people · ${names.slice(0, 4).join(', ')}${names.length > 4 ? ', …' : ''}`;
     }
-    card.append(title, code, people);
+    const printerLine = document.createElement('p');
+    printerLine.className = 'staff-meta';
+    printerLine.textContent = branch.printer_target
+      ? `Printer ${branch.printer_target}`
+      : 'No branch printer set.';
+    card.append(title, code, people, printerLine);
     if (register.can_manage && branch.is_active) {
       const choices = (register.assignable || []).filter((person) => person.branch_id !== branch.branch_id);
       if (choices.length) {
@@ -1745,6 +2095,8 @@ function openBranchEdit(branch) {
   document.getElementById('branch-edit-code').value = branch.branch_code;
   document.getElementById('branch-edit-province').value = branch.province || '';
   document.getElementById('branch-edit-location').value = branch.location_name || '';
+  const printer = document.getElementById('branch-edit-printer');
+  if (printer) printer.value = branch.printer_target || '';
   form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
@@ -2228,16 +2580,31 @@ async function enterDesk(date) {
     const catalogue = await api('/api/movement-options');
     state.movementOptions = catalogue.options;
     state.logoLabel = catalogue.logo_label || '';
+    state.logoFile = catalogue.logo_file || '';
   } catch (_error) {
     state.movementOptions = state.movementOptions || [];
   }
   renderMovementOptions();
   const logo = document.getElementById('brand-logo');
   if (logo && document.activeElement !== logo) logo.value = state.logoLabel || '';
-  try {
+  const logoFile = document.getElementById('brand-logo-file');
+  if (logoFile && document.activeElement !== logoFile) logoFile.value = state.logoFile || '';
+    try {
     await renderSurprise(desk);
   } catch (error) {
     document.getElementById('surprise-review').textContent = error.message;
+  }
+  try {
+    await renderAudit();
+  } catch (error) {
+    const audit = document.getElementById('audit-panel');
+    if (audit) audit.textContent = error.message;
+  }
+  try {
+    renderVaultSheet(desk);
+  } catch (error) {
+    const vault = document.getElementById('vault-sheet-panel');
+    if (vault) vault.textContent = error.message;
   }
   const ledger = document.getElementById('ledger-panel');
   ledger.hidden = !desk.deskOpen;
@@ -2369,12 +2736,15 @@ document.getElementById('brand-form').addEventListener('submit', async (event) =
   const note = document.getElementById('brand-note');
   note.textContent = '';
   try {
+    const body = { logo_label: document.getElementById('brand-logo').value };
+    const file = document.getElementById('brand-logo-file').value.trim();
+    if (file) body.logo_file = file;
     const saved = await api('/api/brand', {
       method: 'PATCH',
-      body: JSON.stringify({ logo_label: document.getElementById('brand-logo').value }),
+      body: JSON.stringify(body),
     });
     state.logoLabel = saved.logo_label;
-    note.textContent = `The surprise-check slip now uses ${saved.logo_label}.`;
+    note.textContent = `Prints use ${saved.logo_label}. The logo file is not shown on this desk.`;
   } catch (err) {
     note.textContent = err.message;
   }
@@ -2386,8 +2756,12 @@ document.getElementById('takeover-slip-close').addEventListener('click', () => {
 document.getElementById('surprise-slip-close').addEventListener('click', () => {
   document.getElementById('surprise-slip').close();
 });
-document.getElementById('takeover-slip-print').addEventListener('click', printOpenSlip);
-document.getElementById('surprise-slip-print').addEventListener('click', printOpenSlip);
+document.getElementById('takeover-slip-print').addEventListener('click', () => {
+  sendSlipToPrinter(document.getElementById('takeover-slip').dataset.printPath);
+});
+document.getElementById('surprise-slip-print').addEventListener('click', () => {
+  sendSlipToPrinter(document.getElementById('surprise-slip').dataset.printPath);
+});
 
 document.getElementById('book-date').addEventListener('change', () => {
   enterDesk(document.getElementById('book-date').value).catch((error) => {
@@ -2842,6 +3216,7 @@ document.getElementById('branch-edit').addEventListener('submit', async (event) 
         branch_code: document.getElementById('branch-edit-code').value,
         province: document.getElementById('branch-edit-province').value,
         location_name: document.getElementById('branch-edit-location').value,
+        printer_target: document.getElementById('branch-edit-printer').value,
       }),
     });
     note.textContent = `${saved.branch_name} is updated.`;

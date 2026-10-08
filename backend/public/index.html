@@ -197,6 +197,9 @@
           <label>Town
             <input id="branch-edit-location" maxlength="120" autocomplete="off">
           </label>
+          <label>Branch printer
+            <input id="branch-edit-printer" maxlength="200" autocomplete="off" placeholder="10.1.4.20 or 10.1.4.20:9100">
+          </label>
           <p id="branch-edit-error" class="error staff-span" role="alert"></p>
           <div class="staff-actions staff-span">
             <button type="submit" id="branch-edit-submit">Save branch</button>
@@ -369,8 +372,11 @@
           <p id="movement-error" class="error" role="alert"></p>
           <div id="movement-list" class="staff-list"></div>
           <form id="brand-form">
-            <label>Bank mark on the surprise-check slip
+            <label>Short name printed beside the logo
               <input id="brand-logo" maxlength="40" required autocomplete="off">
+            </label>
+            <label>Logo file, print only
+              <input id="brand-logo-file" maxlength="120" autocomplete="off" placeholder="logo file name, for example bank-logo.png">
             </label>
             <button type="submit">Save mark</button>
           </form>
@@ -458,6 +464,8 @@
       </section>
       <section id="surprise-panel" hidden aria-label="Surprise cash check"></section>
       <section id="surprise-review" aria-label="Surprise cash checks"></section>
+      <section id="audit-panel" hidden aria-label="Audit review"></section>
+      <section id="vault-sheet-panel" hidden aria-label="Vault movement sheet"></section>
       <section id="signoff" class="signoff" aria-label="Closing sign-off"></section>
       </div>
     </section>
@@ -466,14 +474,14 @@
   <dialog id="takeover-slip" class="slip">
     <article id="takeover-slip-body"></article>
     <div class="dialog-actions">
-      <button type="button" id="takeover-slip-print">Print slip</button>
+      <button type="button" id="takeover-slip-print">Send to branch printer</button>
       <button type="button" id="takeover-slip-close" class="ghost">Close</button>
     </div>
   </dialog>
   <dialog id="surprise-slip" class="slip">
     <article id="surprise-slip-body"></article>
     <div class="dialog-actions">
-      <button type="button" id="surprise-slip-print">Print slip</button>
+      <button type="button" id="surprise-slip-print">Send to branch printer</button>
       <button type="button" id="surprise-slip-close" class="ghost">Close</button>
     </div>
   </dialog>

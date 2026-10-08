@@ -57,6 +57,12 @@ async function setupPools() {
 async function resetDatabase() {
   await adminPool.query(`
     DROP TABLE IF EXISTS
+      print_jobs,
+      vault_sheets,
+      audit_line_marks,
+      audit_signoffs,
+      auditor_branches,
+      mock_core_transactions,
       surprise_check_books,
       surprise_checks,
       book_narrations,
@@ -92,6 +98,8 @@ async function resetDatabase() {
     DROP FUNCTION IF EXISTS nodevault_verify_entry_arithmetic() CASCADE;
     DROP FUNCTION IF EXISTS nodevault_reject_handover_mutation() CASCADE;
     DROP FUNCTION IF EXISTS nodevault_reject_narration_mutation() CASCADE;
+    DROP FUNCTION IF EXISTS nodevault_reject_signoff_mutation() CASCADE;
+    DROP FUNCTION IF EXISTS nodevault_freeze_audit_mark() CASCADE;
     DROP FUNCTION IF EXISTS nodevault_reject_calendar_mutation() CASCADE;
     DROP TYPE IF EXISTS nodevault_closure_scope CASCADE;
     DROP TYPE IF EXISTS nodevault_user_role CASCADE;
