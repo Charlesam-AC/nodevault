@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
 const http = require('http');
 const bcrypt = require('bcryptjs');
 const { resolvePrincipal } = require('../middleware/auth');
@@ -481,7 +483,7 @@ test('the master admin and an acting custodian can post a line on the open book'
     body: {
       ...line,
       accounting_label: 'In CIT',
-      line_reference: 'Seal 14',
+      line_reference: 'CIT 14',
       flow_direction: 'IN',
       amounts: { REISSUABLE: { K100: '10.00' } },
     },
@@ -491,7 +493,14 @@ test('the master admin and an acting custodian can post a line on the open book'
     path: `/api/books/${bookId}`,
     token: acting.body.token,
   });
-  assert.ok(withReference.body.rows.some((row) => row.in_or_out === 'In CIT' && row.reference === 'Seal 14'));
+  assert.ok(withReference.body.rows.some((row) => row.in_or_out === 'In CIT' && row.reference === 'CIT 14'));
+  const earlier = withReference.body.rows.find((row) => row.accounting_label === 'In CIT' && row.reference === 'In CIT');
+  assert.ok(earlier);
+  const deskHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  const deskApp = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  assert.equal(deskHtml.includes('Seal or slip'), false);
+  assert.equal(deskApp.includes('Seal or slip'), false);
+  assert.match(deskApp, /if \(known\.has\(current\)\) input\.value = document\.getElementById\('entry-flow'\)\.value/);
 
   const deskView = await request(applicationPool, { path: '/api/books', token: master.body.token });
   assert.equal(deskView.body.businessDate, '2026-10-07');

@@ -2356,6 +2356,7 @@ function renderEntry(view) {
   }
   document.getElementById('entry-square').hidden = !view.square_required;
   fillEntryFlow();
+  document.getElementById('entry-label').value = document.getElementById('entry-flow').value;
   const initials = rosterInitials();
   document.getElementById('entry-c1').value = initials.c1;
   document.getElementById('entry-c2').value = initials.c2;
@@ -2657,7 +2658,10 @@ document.getElementById('login-form').addEventListener('submit', async (event) =
 document.getElementById('sign-out').addEventListener('click', showLogin);
 
 document.getElementById('entry-flow').addEventListener('change', () => {
-  document.getElementById('entry-label').focus();
+  const input = document.getElementById('entry-label');
+  const current = input.value.trim();
+  const known = new Set(['', ...(state.movementOptions || []).map((option) => option.label)]);
+  if (known.has(current)) input.value = document.getElementById('entry-flow').value;
 });
 
 document.getElementById('movement-add').addEventListener('submit', async (event) => {
