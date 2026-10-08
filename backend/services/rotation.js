@@ -1,7 +1,8 @@
 const bcrypt = require('bcryptjs');
 const { VaultError } = require('./errors');
 const { recordAudit } = require('./audit');
-const { loadRows, amountsFromCells } = require('./ledger');
+const { loadRows, amountsFromCells, composeRow, positionByCurrency } = require('./ledger');
+const { figuresFromMinors, takeoverSentence, formatStamp, nameList } = require('./narration');
 const {
   calendarOptions,
   periodContaining,
@@ -182,6 +183,7 @@ async function captureHandover(db, {
   branchId,
   effectiveDate,
   posts,
+  at = new Date(),
 }) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate || '')) {
     throw new VaultError('HANDOVER_DATE', 'Effective date must be YYYY-MM-DD');
@@ -269,15 +271,19 @@ async function captureHandover(db, {
     });
   }
 
+  const stamp = at instanceof Date ? at : new Date(at);
+  if (Number.isNaN(stamp.getTime())) {
+    throw new VaultError('HANDOVER_DATE', 'The takeover time is not a real date');
+  }
   const detail = { effectiveDate, priorBusinessDate: priorDate, posts: captured, balances };
   const client = await db.connect();
   try {
     await client.query('BEGIN');
     const log = await client.query(
-      `INSERT INTO handover_logs (tenant_id, branch_id, effective_date, balances, detail)
-       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
+      `INSERT INTO handover_logs (tenant_id, branch_id, effective_date, balances, detail, created_at)
+       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6)
        RETURNING handover_id`,
-      [tenantId, branchId, effectiveDate, JSON.stringify(balances), JSON.stringify(detail)],
+      [tenantId, branchId, effectiveDate, JSON.stringify(balances), JSON.stringify(detail), stamp.toISOString()],
     );
     const handoverId = log.rows[0].handover_id;
     for (const post of captured) {
@@ -302,8 +308,17 @@ async function captureHandover(db, {
       actorUserIds: [...new Set(captured.flatMap((post) => [post.outgoing.userId, post.incoming.userId]))],
       detail,
     });
+    const narrations = await writeTakeoverNarrations(client, {
+      tenantId,
+      branchId,
+      handoverId,
+      effectiveDate,
+      captured,
+      balances,
+      at: stamp,
+    });
     await client.query('COMMIT');
-    return { handoverId: Number(handoverId), effectiveDate, balances, posts: captured };
+    return { handoverId: Number(handoverId), effectiveDate, balances, posts: captured, narrations };
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_rollbackError) { /* already aborted */ }
     throw error;
@@ -312,10 +327,121 @@ async function captureHandover(db, {
   }
 }
 
+async function writeTakeoverNarrations(client, {
+  tenantId,
+  branchId,
+  handoverId,
+  effectiveDate,
+  captured,
+  balances,
+  at,
+}) {
+  const seat = (code) => captured.find((post) => post.postCode === code);
+  const incomingOne = seat('CUSTODIAN_ONE');
+  const incomingTwo = seat('CUSTODIAN_TWO');
+  if (!incomingOne || !incomingTwo) return [];
+  const incoming = [incomingOne.incoming, incomingTwo.incoming];
+  const outgoing = [incomingOne.outgoing, incomingTwo.outgoing];
+  const narrations = [];
+  for (const bookClass of BOOK_ORDER) {
+    const cells = composeRow(bookClass, { amounts: balances[bookClass] });
+    const figures = figuresFromMinors(bookClass, positionByCurrency(bookClass, cells));
+    const text = takeoverSentence({ figures, incoming, outgoing, at });
+    await client.query(
+      `INSERT INTO book_narrations (
+         tenant_id, branch_id, handover_id, book_class, business_date, narration_text, totals
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+      [tenantId, branchId, handoverId, bookClass, effectiveDate, text, JSON.stringify(figures)],
+    );
+    narrations.push({ book_class: bookClass, narration_text: text, totals: figures });
+  }
+  await recordAudit(client, {
+    tenantId,
+    eventType: 'TAKEOVER_NARRATED',
+    actorUserIds: [...new Set(incoming.concat(outgoing).map((person) => person.userId))],
+    detail: {
+      handover_id: Number(handoverId),
+      business_date: effectiveDate,
+      narrations: narrations.map((item) => ({
+        book_class: item.book_class,
+        narration_text: item.narration_text,
+      })),
+    },
+  });
+  return narrations;
+}
+
+async function takeoverSlip(db, tenantId, handoverId) {
+  const result = await db.query(
+    `SELECT h.handover_id, h.branch_id, h.effective_date::text AS effective_date,
+            h.created_at, h.detail,
+            br.branch_name, br.branch_code, t.bank_name, t.logo_label
+     FROM handover_logs h
+     JOIN branches br ON br.branch_id = h.branch_id AND br.tenant_id = h.tenant_id
+     JOIN bank_tenants t ON t.tenant_id = h.tenant_id
+     WHERE h.handover_id = $1 AND h.tenant_id = $2`,
+    [handoverId, tenantId],
+  );
+  if (result.rowCount !== 1) {
+    throw new VaultError('HANDOVER_NOT_FOUND', 'That handover is not on this bank', 404);
+  }
+  const log = result.rows[0];
+  const narrations = await db.query(
+    `SELECT book_class, narration_text, totals
+     FROM book_narrations
+     WHERE handover_id = $1`,
+    [handoverId],
+  );
+  if (narrations.rowCount === 0) {
+    throw new VaultError('NO_NARRATION', 'That handover did not write a takeover narration', 404);
+  }
+  const posts = log.detail.posts || [];
+  const seat = (code) => posts.find((post) => post.postCode === code);
+  const books = BOOK_ORDER.map((bookClass) => {
+    const row = narrations.rows.find((item) => item.book_class === bookClass);
+    return {
+      book_class: bookClass,
+      narration_text: row.narration_text,
+      totals: row.totals,
+    };
+  });
+  let headTeller = seat('HEAD_TELLER');
+  if (!headTeller) {
+    const covering = await assignmentCovering(
+      db, tenantId, log.branch_id, 'HEAD_TELLER', log.effective_date,
+    );
+    headTeller = covering ? {
+      incoming: {
+        fullLegalName: covering.full_legal_name,
+        employeeId: covering.employee_id,
+      },
+    } : null;
+  }
+  return {
+    handover_id: Number(log.handover_id),
+    bank_name: log.bank_name,
+    logo_label: log.logo_label,
+    branch_name: log.branch_name,
+    branch_code: log.branch_code,
+    effective_date: log.effective_date,
+    taken_over_at: formatStamp(log.created_at),
+    handing_over: [seat('CUSTODIAN_ONE').outgoing, seat('CUSTODIAN_TWO').outgoing],
+    taking_over: [seat('CUSTODIAN_ONE').incoming, seat('CUSTODIAN_TWO').incoming],
+    head_teller: headTeller ? {
+      fullLegalName: headTeller.incoming.fullLegalName,
+      employeeId: headTeller.incoming.employeeId,
+    } : null,
+    books,
+    signature_names: nameList([seat('CUSTODIAN_ONE').incoming, seat('CUSTODIAN_TWO').incoming]),
+  };
+}
+
 module.exports = {
   POSTS,
   holdersForDate,
+  assignmentCovering,
   rotationView,
   captureHandover,
   lockedCarrySnapshot,
+  takeoverSlip,
 };

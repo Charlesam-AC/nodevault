@@ -2,18 +2,31 @@ const { VaultError } = require('./errors');
 const { toMinor, toDecimalString, formatMoney } = require('./money');
 const { getLayout, publicLayout } = require('./layout');
 const { formatDisplayDate } = require('./week');
+const { carryLabel } = require('./movements');
 
 function cellKey(channel, code, kind) {
   return `${channel}|${code}|${kind}`;
 }
 
 function inOrOut(entry) {
-  if (entry.accountingLabel === 'CIT In' || entry.accountingLabel === 'CIT Out') {
-    return entry.accountingLabel;
+  const label = entry.accountingLabel;
+  if (
+    label === 'Bal b/f'
+    || label === 'Bal b/d'
+    || label === 'Bal c/d'
+    || label === 'CIT In'
+    || label === 'CIT Out'
+  ) {
+    return label;
   }
+  if (label === 'In' || label === 'Out' || label === 'CIT_IN' || label === 'CIT_OUT') {
+    if (entry.flowDirection === 'IN') return 'In';
+    if (entry.flowDirection === 'OUT') return 'Out';
+  }
+  if ((entry.flowDirection === 'IN' || entry.flowDirection === 'OUT') && label) return label;
   if (entry.flowDirection === 'IN') return 'In';
   if (entry.flowDirection === 'OUT') return 'Out';
-  return entry.accountingLabel;
+  return label;
 }
 
 function initialsOf(entry) {
@@ -431,12 +444,24 @@ async function getBookView(db, tenantId, bookId) {
       position = { error: error.message };
     }
   }
+  const narration = await db.query(
+    `SELECT handover_id, narration_text, totals
+     FROM book_narrations
+     WHERE tenant_id = $1 AND branch_id = $2 AND book_class = $3 AND business_date = $4`,
+    [tenantId, record.branch_id, record.book_class, record.business_date],
+  );
   return {
     book: record,
     layout: publicLayout(record.book_class),
     rows: presentRows(record.book_class, rows),
     position,
     square_required: squareRequired,
+    carry_label: await carryLabel(db, tenantId),
+    narration: narration.rowCount ? {
+      handover_id: Number(narration.rows[0].handover_id),
+      text: narration.rows[0].narration_text,
+      totals: narration.rows[0].totals,
+    } : null,
   };
 }
 
@@ -475,6 +500,10 @@ async function writeCarriedDown(db, {
       && sameMap(map, mapFromCells(last.cells))
     ) {
       throw new VaultError('ALREADY_SQUARE', 'The carried-down row already matches the book', 409);
+    }
+    const gate = await carryLabel(client, tenantId);
+    if (!last || last.accountingLabel !== gate) {
+      throw new VaultError('IN_VAULT_REQUIRED', `Bal c/d is written only after ${gate}`, 409);
     }
     const created = await insertLedgerRow(client, {
       tenantId,

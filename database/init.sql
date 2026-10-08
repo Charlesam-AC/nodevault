@@ -18,6 +18,7 @@ CREATE TABLE bank_tenants (
   tenant_id SERIAL PRIMARY KEY,
   bank_name VARCHAR(100) NOT NULL UNIQUE,
   corporate_domain VARCHAR(100) NOT NULL UNIQUE,
+  logo_label VARCHAR(40) NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -117,6 +118,55 @@ CREATE TABLE handover_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (tenant_id, branch_id, effective_date),
   FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id)
+);
+
+-- In or Out choices. Bal c/d is allowed only after the option flagged carries_down (In Vault).
+CREATE TABLE movement_options (
+  option_id SERIAL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
+  label VARCHAR(32) NOT NULL,
+  flow_direction VARCHAR(3) NOT NULL CHECK (flow_direction IN ('IN', 'OUT')),
+  carries_down BOOLEAN NOT NULL DEFAULT false,
+  sort_order INT NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  UNIQUE (tenant_id, label)
+);
+
+CREATE UNIQUE INDEX movement_options_one_carry
+  ON movement_options (tenant_id)
+  WHERE carries_down;
+
+-- Takeover narration is not a ledger line. It does not hold denomination cells.
+CREATE TABLE book_narrations (
+  narration_id BIGSERIAL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
+  branch_id INT NOT NULL,
+  handover_id BIGINT NOT NULL REFERENCES handover_logs (handover_id),
+  book_class nodevault_book_class NOT NULL,
+  business_date DATE NOT NULL,
+  narration_text TEXT NOT NULL,
+  totals JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (handover_id, book_class),
+  UNIQUE (tenant_id, branch_id, book_class, business_date),
+  FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id)
+);
+
+-- A surprise cash check is not a ledger movement and does not change Bal b/f, b/d, or c/d.
+CREATE TABLE surprise_checks (
+  check_id BIGSERIAL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
+  branch_id INT NOT NULL,
+  business_date DATE NOT NULL,
+  checked_at TIMESTAMPTZ NOT NULL,
+  checker_user_id INT NOT NULL,
+  checker_name VARCHAR(120) NOT NULL,
+  checker_employee_id VARCHAR(32) NOT NULL,
+  checker_role VARCHAR(40) NOT NULL,
+  custodians_present JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id),
+  FOREIGN KEY (tenant_id, checker_user_id) REFERENCES nodevault_users (tenant_id, user_id)
 );
 
 CREATE TABLE post_assignments (
@@ -224,6 +274,18 @@ CREATE TABLE branch_vault_books (
   closed_at TIMESTAMPTZ,
   UNIQUE (tenant_id, branch_id, book_class, business_date),
   FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id)
+);
+
+CREATE TABLE surprise_check_books (
+  check_book_id BIGSERIAL PRIMARY KEY,
+  check_id BIGINT NOT NULL REFERENCES surprise_checks (check_id),
+  book_id BIGINT NOT NULL REFERENCES branch_vault_books (book_id),
+  book_class nodevault_book_class NOT NULL,
+  system_totals JSONB NOT NULL,
+  counted_totals JSONB NOT NULL,
+  matched BOOLEAN NOT NULL,
+  narration_text TEXT NOT NULL,
+  UNIQUE (check_id, book_class)
 );
 
 -- Identity columns sit at the front of the row: line, date, then the three initials.
@@ -367,6 +429,31 @@ CREATE TRIGGER handover_logs_append_only
 BEFORE UPDATE OR DELETE ON handover_logs
 FOR EACH ROW
 EXECUTE FUNCTION nodevault_reject_handover_mutation();
+
+CREATE OR REPLACE FUNCTION nodevault_reject_narration_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  RAISE EXCEPTION 'narration records are append-only';
+END;
+$$;
+
+CREATE TRIGGER book_narrations_append_only
+BEFORE UPDATE OR DELETE ON book_narrations
+FOR EACH ROW
+EXECUTE FUNCTION nodevault_reject_narration_mutation();
+
+CREATE TRIGGER surprise_checks_append_only
+BEFORE UPDATE OR DELETE ON surprise_checks
+FOR EACH ROW
+EXECUTE FUNCTION nodevault_reject_narration_mutation();
+
+CREATE TRIGGER surprise_check_books_append_only
+BEFORE UPDATE OR DELETE ON surprise_check_books
+FOR EACH ROW
+EXECUTE FUNCTION nodevault_reject_narration_mutation();
 
 CREATE OR REPLACE FUNCTION nodevault_reject_calendar_mutation()
 RETURNS trigger
@@ -692,6 +779,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nodevault_app;
 
 GRANT SELECT, INSERT ON bank_tenants, branches, nodevault_users, desk_roles, system_control,
   weekly_coordinator_assignments, rotation_schedules, handover_logs, post_assignments,
+  movement_options, book_narrations, surprise_checks, surprise_check_books,
   non_working_closures, non_working_closure_branches, non_working_closure_cancellations,
   gazetted_holidays, gazetted_holiday_cancellations,
   carry_forward_flags, branch_vault_books, vault_denomination_matrix_ledger,
@@ -706,6 +794,8 @@ GRANT UPDATE (
 GRANT UPDATE (display_name) ON desk_roles TO nodevault_app;
 GRANT DELETE ON desk_roles TO nodevault_app;
 GRANT UPDATE (period_end) ON post_assignments TO nodevault_app;
+GRANT UPDATE (logo_label) ON bank_tenants TO nodevault_app;
+GRANT UPDATE (label, flow_direction, sort_order, is_active) ON movement_options TO nodevault_app;
 GRANT UPDATE (branch_code, branch_name, province, location_name, is_active, permanently_closed) ON branches TO nodevault_app;
 GRANT UPDATE (status, closed_at) ON branch_vault_books TO nodevault_app;
 GRANT UPDATE (initialized_at, it_admin_frozen, entra_enabled) ON system_control TO nodevault_app;
@@ -724,6 +814,9 @@ REVOKE UPDATE, DELETE, TRUNCATE ON audit_events FROM nodevault_app;
 REVOKE DELETE, TRUNCATE ON branch_vault_books FROM nodevault_app;
 REVOKE DELETE, TRUNCATE ON audit_events FROM nodevault_app;
 REVOKE UPDATE, DELETE, TRUNCATE ON handover_logs FROM nodevault_app;
+REVOKE UPDATE, DELETE, TRUNCATE ON book_narrations FROM nodevault_app;
+REVOKE UPDATE, DELETE, TRUNCATE ON surprise_checks FROM nodevault_app;
+REVOKE UPDATE, DELETE, TRUNCATE ON surprise_check_books FROM nodevault_app;
 REVOKE UPDATE, DELETE, TRUNCATE ON non_working_closures FROM nodevault_app;
 REVOKE UPDATE, DELETE, TRUNCATE ON non_working_closure_branches FROM nodevault_app;
 REVOKE UPDATE, DELETE, TRUNCATE ON non_working_closure_cancellations FROM nodevault_app;

@@ -1164,6 +1164,9 @@ footer { padding: 1.5rem 1.25rem 2rem; color: #ffffff; font-size: 0.82rem; }
   #staff-panel,
   #rotation-panel,
   #handover-panel,
+  #movement-panel,
+  #surprise-panel,
+  #surprise-review,
   #carry-flags,
   .desk-bar,
   .sheet-toolbar,
@@ -2011,4 +2014,84 @@ body:not(.is-gate) #role-panel :is(input, select):focus {
 }
 @media print {
   #role-panel { display: none !important; }
+}
+
+.narration-row td {
+  white-space: normal;
+  text-align: left;
+  max-width: 72rem;
+  font-family: "Public Sans", "Segoe UI", sans-serif;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: #102833;
+  background: #f4fbf8;
+  padding: 0.75rem 0.9rem;
+}
+.narration-row .slip-open { margin-top: 0.55rem; }
+#movement-add, #brand-form, .option-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: end;
+  margin: 0.8rem 0;
+}
+.option-row input { flex: 1 1 12rem; margin: 0; }
+#surprise-panel, #surprise-review {
+  margin: 1rem 0 0;
+  color: #102833;
+}
+.check-card, #surprise-panel {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  margin-top: 0.7rem;
+}
+.check-when { font-weight: 700; margin: 0 0 0.4rem; }
+.slip-narration { margin: 0.35rem 0; line-height: 1.45; }
+dialog.slip {
+  width: min(760px, calc(100vw - 2rem));
+  border: 0;
+  border-radius: 18px;
+  color: #102833;
+}
+dialog.slip article { margin: 0; }
+.slip-logo {
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  font-size: 1.4rem;
+  margin: 0 0 0.2rem;
+}
+.slip-bank { font-size: 1.15rem; font-weight: 700; margin: 0; }
+.slip-branch, .slip-when, .slip-checker, .slip-aside { margin: 0.2rem 0; }
+.slip-book { margin-top: 1rem; }
+.slip-book h3 { margin: 0 0 0.35rem; }
+.slip-total { margin: 0.15rem 0; }
+.slip-total strong { font-weight: 800; }
+.slip-signs { margin-top: 1.1rem; }
+.slip-sign {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(10rem, 16rem);
+  gap: 1rem;
+  align-items: end;
+  margin: 0.8rem 0;
+}
+dialog.slip .sig-line {
+  border-bottom: 1px solid #102833;
+  min-height: 1.6rem;
+  color: #5c7284;
+  font-size: 0.75rem;
+}
+@media print {
+  body.is-slip { background: #fff; }
+  body.is-slip header.mast,
+  body.is-slip footer,
+  body.is-slip main,
+  body.is-slip #login-view { display: none !important; }
+  body.is-slip dialog.slip {
+    display: block !important;
+    position: static;
+    width: auto;
+    box-shadow: none;
+  }
+  body.is-slip dialog.slip .dialog-actions { display: none !important; }
 }

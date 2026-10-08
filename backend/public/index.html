@@ -342,6 +342,41 @@
       </section>
       <section id="rotation-panel" aria-label="Post rotation"></section>
       <section id="handover-panel" hidden></section>
+      <section id="movement-panel" hidden class="fold" aria-label="In or Out options">
+        <button type="button" class="fold-toggle" aria-expanded="true" aria-controls="movement-body">
+          <span class="fold-mark" aria-hidden="true"></span>
+          <span class="fold-copy">
+            <span class="fold-kicker">Books</span>
+            <span class="fold-title">In or Out options</span>
+          </span>
+          <span class="fold-count" id="movement-count"></span>
+          <span class="fold-switch"><span class="fold-word">Hide</span><span class="fold-chevron" aria-hidden="true"></span></span>
+        </button>
+        <div id="movement-body" class="fold-body">
+          <p class="fold-lead">These are the choices in the In or Out cell. Bal b/f, Bal b/d, and Bal c/d stay balance lines. Bal c/d is written only after In Vault.</p>
+          <form id="movement-add">
+            <label>Option
+              <input id="movement-label" maxlength="32" required autocomplete="off">
+            </label>
+            <label>Direction
+              <select id="movement-flow" required>
+                <option value="IN">In</option>
+                <option value="OUT">Out</option>
+              </select>
+            </label>
+            <button type="submit" id="movement-add-submit">Add option</button>
+          </form>
+          <p id="movement-error" class="error" role="alert"></p>
+          <div id="movement-list" class="staff-list"></div>
+          <form id="brand-form">
+            <label>Bank mark on the surprise-check slip
+              <input id="brand-logo" maxlength="40" required autocomplete="off">
+            </label>
+            <button type="submit">Save mark</button>
+          </form>
+          <p id="brand-note" class="staff-note" role="status"></p>
+        </div>
+      </section>
       <p id="carry-flags" class="error"></p>
       <div id="ledger-panel">
       <div id="sheet-suspend">
@@ -397,15 +432,10 @@
         <form id="entry-form">
           <div class="entry-meta">
             <label><span>In or out</span>
-              <select id="entry-flow">
-                <option value="CIT_IN">CIT In</option>
-                <option value="CIT_OUT">CIT Out</option>
-                <option value="IN">In</option>
-                <option value="OUT">Out</option>
-              </select>
+              <select id="entry-flow"></select>
             </label>
             <label><span>Reference</span>
-              <input id="entry-label" maxlength="32" required value="CIT In" autocomplete="off">
+              <input id="entry-label" maxlength="32" required placeholder="Seal or slip" autocomplete="off">
             </label>
             <label><span>Custodian 1</span>
               <input id="entry-c1" maxlength="8" required autocomplete="off">
@@ -426,11 +456,27 @@
           </div>
         </form>
       </section>
+      <section id="surprise-panel" hidden aria-label="Surprise cash check"></section>
+      <section id="surprise-review" aria-label="Surprise cash checks"></section>
       <section id="signoff" class="signoff" aria-label="Closing sign-off"></section>
       </div>
     </section>
   </main>
 
+  <dialog id="takeover-slip" class="slip">
+    <article id="takeover-slip-body"></article>
+    <div class="dialog-actions">
+      <button type="button" id="takeover-slip-print">Print slip</button>
+      <button type="button" id="takeover-slip-close" class="ghost">Close</button>
+    </div>
+  </dialog>
+  <dialog id="surprise-slip" class="slip">
+    <article id="surprise-slip-body"></article>
+    <div class="dialog-actions">
+      <button type="button" id="surprise-slip-print">Print slip</button>
+      <button type="button" id="surprise-slip-close" class="ghost">Close</button>
+    </div>
+  </dialog>
   <dialog id="close-dialog">
     <form id="close-form" method="dialog">
       <h3>Nightly triple sign-off</h3>

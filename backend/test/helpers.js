@@ -3,6 +3,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 const { createPool } = require('../db');
 const { syncCatalogue } = require('../services/catalogue');
+const { ensureMovementOptions } = require('../services/movements');
 const { createBookWithRows } = require('../services/books');
 const { isoWeekParts } = require('../services/week');
 const { DATE, kwachaRows, foreignRows, bancsRows } = require('../fixtures/sampleLedger');
@@ -56,6 +57,10 @@ async function setupPools() {
 async function resetDatabase() {
   await adminPool.query(`
     DROP TABLE IF EXISTS
+      surprise_check_books,
+      surprise_checks,
+      book_narrations,
+      movement_options,
       desk_roles,
       gazetted_holiday_cancellations,
       gazetted_holidays,
@@ -86,6 +91,7 @@ async function resetDatabase() {
     DROP FUNCTION IF EXISTS nodevault_guard_book() CASCADE;
     DROP FUNCTION IF EXISTS nodevault_verify_entry_arithmetic() CASCADE;
     DROP FUNCTION IF EXISTS nodevault_reject_handover_mutation() CASCADE;
+    DROP FUNCTION IF EXISTS nodevault_reject_narration_mutation() CASCADE;
     DROP FUNCTION IF EXISTS nodevault_reject_calendar_mutation() CASCADE;
     DROP TYPE IF EXISTS nodevault_closure_scope CASCADE;
     DROP TYPE IF EXISTS nodevault_user_role CASCADE;
@@ -99,8 +105,8 @@ async function resetDatabase() {
 async function createDesk(pinHash, options = {}) {
   const db = applicationPool;
   const tenant = await db.query(
-    `INSERT INTO bank_tenants (bank_name, corporate_domain)
-     VALUES ('Desk Bank', 'demo-bank.example') RETURNING tenant_id`,
+    `INSERT INTO bank_tenants (bank_name, corporate_domain, logo_label)
+     VALUES ('Desk Bank', 'demo-bank.example', 'FNB') RETURNING tenant_id`,
   );
   const tenantId = tenant.rows[0].tenant_id;
   const branch = await db.query(
@@ -134,6 +140,7 @@ async function createDesk(pinHash, options = {}) {
      VALUES ($1, now(), true)`,
     [tenantId],
   );
+  await ensureMovementOptions(db, tenantId);
   const week = isoWeekParts(DATE);
   await db.query(
     `INSERT INTO weekly_coordinator_assignments

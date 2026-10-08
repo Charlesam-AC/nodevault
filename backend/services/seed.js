@@ -4,12 +4,14 @@ const { isoWeekParts } = require('./week');
 const { syncCatalogue } = require('./catalogue');
 const { createBookWithRows } = require('./books');
 const { recordAudit } = require('./audit');
+const { ensureMovementOptions } = require('./movements');
 const { DATE, kwachaRows, foreignRows, bancsRows } = require('../fixtures/sampleLedger');
 
 async function seedDemo(db) {
   await syncCatalogue(db);
   const existing = await db.query('SELECT tenant_id FROM bank_tenants LIMIT 1');
   if (existing.rowCount > 0) {
+    await ensureCeremony(db);
     const books = await db.query(
       `SELECT COUNT(DISTINCT book_class)::int AS classes
        FROM branch_vault_books
@@ -37,8 +39,8 @@ async function seedDemo(db) {
   }
 
   const tenant = await db.query(
-    `INSERT INTO bank_tenants (bank_name, corporate_domain)
-     VALUES ('Demo Commercial Bank', 'demo-bank.example')
+    `INSERT INTO bank_tenants (bank_name, corporate_domain, logo_label)
+     VALUES ('Demo Commercial Bank', 'demo-bank.example', 'FNB')
      RETURNING tenant_id`,
   );
   const tenantId = tenant.rows[0].tenant_id;
@@ -153,8 +155,24 @@ async function seedDemo(db) {
      WHERE book_id = ANY($1::bigint[])`,
     [[...saturdayIds, ...fridayIds]],
   );
+  await ensureMovementOptions(db, tenantId);
   await ensureMasterAdmin(db);
   return { seeded: true, tenantId, branchId };
+}
+
+async function ensureCeremony(db) {
+  const tenants = await db.query(
+    `SELECT tenant_id, corporate_domain, logo_label FROM bank_tenants`,
+  );
+  for (const tenant of tenants.rows) {
+    await ensureMovementOptions(db, tenant.tenant_id);
+    if (!tenant.logo_label && tenant.corporate_domain === 'demo-bank.example') {
+      await db.query(
+        `UPDATE bank_tenants SET logo_label = 'FNB' WHERE tenant_id = $1`,
+        [tenant.tenant_id],
+      );
+    }
+  }
 }
 
 // The seeded IT super admin stays frozen. This account is the one password
@@ -210,4 +228,4 @@ async function ensureMasterAdmin(db) {
   return { ensured: true, userId: inserted.rows[0].user_id };
 }
 
-module.exports = { seedDemo, ensureMasterAdmin };
+module.exports = { seedDemo, ensureMasterAdmin, ensureCeremony };

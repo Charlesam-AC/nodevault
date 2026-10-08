@@ -12,7 +12,7 @@ Charles Amulike. Specification v1.0.4. Column layouts follow the photographed pa
 | Foreign Currency Treasury Book | EURO NOTES, GBP NOTES, USD NOTES, ZAR NOTES, each with its own total |
 | Bancs Treasury Book | Same foreign-notes layout, separate book and balances |
 
-Foreign Currency and Bancs are built by one layout function (`foreignLayout` in `backend/services/layout.js`). Kwacha has its own. The row number is repeated on the right edge of the spread. `In or Out` is the flow. One Initials column shows custodian 1, custodian 2, and the coordinator; those three are stored separately.
+Foreign Currency and Bancs are built by one layout function (`foreignLayout` in `backend/services/layout.js`). Kwacha has its own. `In or Out` is a configured option, not a free-typed direction. One Initials column shows custodian 1, custodian 2, and the head teller; those three are stored separately.
 
 Grand Total = Total Re-Issuable + Total Coins. There is no Old Currency Notes column and no non-re-issuable notes section. Foreign currencies are never summed into one figure.
 
@@ -37,6 +37,18 @@ Bal c/d itself is still the certified last line the three-person close checks. I
 The head teller and the two vault-custodian seats each have a schedule: weekly, fortnightly, monthly, or a custom number of days. The demo head teller rotates weekly from 28 September 2026. The two custodian seats rotate every two weeks from the same anchor. The closing interlock accepts only the people assigned to those seats on the operating date.
 
 The opening roster is seeded and does not need a prior handover. The next period stays unassigned until outgoing and incoming holders acknowledge it with their closing PINs. The form records who is taking over, employee ID, initials, and the effective date. The handover log and a `HANDOVER_CAPTURED` audit row store the three books' locked Bal c/d balances. Once a business morning falls inside a period with no assignment, the ledger stays hidden until that handover is captured. A handover can be acknowledged before that morning.
+
+When that handover commits both custodian seats, the desk writes one takeover narration on each book. Nobody types it. It is not a ledger line: no denomination cells, and it does not change a balance. It is shown directly under line 1, Bal b/f, of the new period. Kwacha uses the grand total (Total Re-Issuable + Total Coins) in kwacha and ngwee. Foreign Currency and Bancs each list EUR, GBP, USD, and ZAR with that currency's own amount in words. The sentence names the two incoming custodians, then the two outgoing custodians, then the takeover date and time, then the incoming custodians again. The head teller is not in the sentence. The opening Bal b/f, a refused PIN, and a handover that does not include both custodians write none. The audit event is `TAKEOVER_NARRATED`. The takeover slip prints each book's total brought forward in bold, the amount in words, and the narration, with signature lines for the two handing over and the two taking over. The head teller is printed on the slip and does not sign.
+
+## Surprise cash check
+
+An auditor or the regional operations manager can record a surprise cash check on any day, at any time, against an open book or a book that is already `BALANCED_CLOSED`. The master admin can record one only while not acting as someone else, so the desk can be demonstrated. A vault custodian, the head teller, a teller, and a branch manager cannot: the count has to come from someone who is not holding the cash. The check is stored on its own. It is not a ledger movement, and Bal b/f, Bal b/d, and Bal c/d stay as they were.
+
+The record keeps the checker's full legal name, employee ID, role, and the date and time, the custodians on duty (named as present; they do not sign), and each book's system position beside the counted total. A match uses the correct-as sentence. A difference uses the same sentence and says short by or over by, currency by currency, each amount in words. The slip shows the tenant's bank mark (FNB on the demo, and the master admin can change that mark) and one signature line, for the checker. The auditor's review lists the check at the date and time it happened.
+
+## In or Out
+
+The master admin sets the In or Out list. A new bank starts with Out ATM, In ATM, In CIT, Out CIT, Out Vault, and In Vault. Options can be added, renamed, or retired. In Vault stays, because Bal c/d is written only on the line after In Vault. Bal b/f, Bal b/d, and Bal c/d remain the balance labels and are not options in that list.
 
 Saturday 3 October 2026 is a trading day. The photographed sample is locked on that date and is the Bal c/d Monday 5 October brings forward. Friday 2 October 2026 is also locked, which is what a Saturday morning would roll forward. The Saturday book is the sample itself, so the morning job does not insert a second Bal b/f on top of it. The desk shows that Saturday book while Saturday is the business morning.
 

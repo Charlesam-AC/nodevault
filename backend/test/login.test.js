@@ -394,7 +394,7 @@ test('the master admin and an acting custodian can post a line on the open book'
     custodian_one_initials: 'C.A.',
     custodian_two_initials: 'J.P.',
     teller_coord_initials: 'M.K.',
-    accounting_label: 'CIT_IN',
+    accounting_label: 'In CIT',
     flow_direction: 'IN',
     amounts: { REISSUABLE: { K100: '100.00' } },
   };
@@ -438,7 +438,7 @@ test('the master admin and an acting custodian can post a line on the open book'
     method: 'POST',
     path: `/api/books/${bookId}/entries`,
     token: acting.body.token,
-    body: { ...line, accounting_label: 'CIT_OUT', flow_direction: 'OUT', amounts: { REISSUABLE: { K100: '50.00' } } },
+    body: { ...line, accounting_label: 'Out CIT', flow_direction: 'OUT', amounts: { REISSUABLE: { K100: '50.00' } } },
   });
   assert.equal(second.status, 201);
 
@@ -448,7 +448,15 @@ test('the master admin and an acting custodian can post a line on the open book'
   });
   assert.equal(openView.body.square_required, true);
   assert.equal(openView.body.position.ZMW.display, 'K1,656,565.00');
-  assert.ok(openView.body.rows.some((row) => row.accounting_label === 'CIT_IN' && row.in_or_out === 'In' && row.reference === 'CIT_IN'));
+  assert.ok(openView.body.rows.some((row) => row.accounting_label === 'In CIT' && row.in_or_out === 'In CIT' && row.reference === 'In CIT'));
+
+  const vaulted = await request(applicationPool, {
+    method: 'POST',
+    path: `/api/books/${bookId}/entries`,
+    token: acting.body.token,
+    body: { ...line, accounting_label: 'In Vault', amounts: { REISSUABLE: { K100: '10.00' } } },
+  });
+  assert.equal(vaulted.status, 201);
 
   const squared = await request(applicationPool, {
     method: 'POST',
@@ -464,7 +472,7 @@ test('the master admin and an acting custodian can post a line on the open book'
   assert.equal(balanced.body.square_required, false);
   assert.equal(balanced.body.rows.at(-1).accounting_label, 'Bal c/d');
   assert.equal(balanced.body.rows.at(-1).reference, 'Bal c/d');
-  assert.equal(balanced.body.position.ZMW.display, 'K1,656,565.00');
+  assert.equal(balanced.body.position.ZMW.display, 'K1,656,575.00');
 
   const cited = await request(applicationPool, {
     method: 'POST',
@@ -472,7 +480,7 @@ test('the master admin and an acting custodian can post a line on the open book'
     token: acting.body.token,
     body: {
       ...line,
-      accounting_label: 'CIT In',
+      accounting_label: 'In CIT',
       line_reference: 'Seal 14',
       flow_direction: 'IN',
       amounts: { REISSUABLE: { K100: '10.00' } },
@@ -483,7 +491,7 @@ test('the master admin and an acting custodian can post a line on the open book'
     path: `/api/books/${bookId}`,
     token: acting.body.token,
   });
-  assert.ok(withReference.body.rows.some((row) => row.in_or_out === 'CIT In' && row.reference === 'Seal 14'));
+  assert.ok(withReference.body.rows.some((row) => row.in_or_out === 'In CIT' && row.reference === 'Seal 14'));
 
   const deskView = await request(applicationPool, { path: '/api/books', token: master.body.token });
   assert.equal(deskView.body.businessDate, '2026-10-07');
@@ -523,7 +531,7 @@ test('a vault custodian can amend an open line and a closed book stays locked', 
     path: `/api/books/${bookId}/entries/${line.line_number}`,
     token: custodian.body.token,
     body: {
-      accounting_label: 'In',
+      accounting_label: 'In ATM',
       line_reference: 'Vault slip',
       flow_direction: 'IN',
       custodian_one_initials: 'C.A.',
@@ -540,7 +548,7 @@ test('a vault custodian can amend an open line and a closed book stays locked', 
   });
   const updated = after.body.rows.find((row) => row.line_number === line.line_number);
   assert.equal(updated.reference, 'Vault slip');
-  assert.equal(updated.in_or_out, 'In');
+  assert.equal(updated.in_or_out, 'In ATM');
   assert.equal(after.body.square_required, false);
   assert.notEqual(after.body.position.ZMW.display, before.body.position.ZMW.display);
   assert.match(updated.displays['TREASURY|GRAND|GRAND'], /^\+ K/);
@@ -550,7 +558,7 @@ test('a vault custodian can amend an open line and a closed book stays locked', 
     path: `/api/books/${bookId}/entries/${line.line_number}`,
     token: custodian.body.token,
     body: {
-      accounting_label: 'CIT Out',
+      accounting_label: 'Out CIT',
       line_reference: 'Vault slip',
       flow_direction: 'OUT',
       custodian_one_initials: 'C.A.',
@@ -572,7 +580,7 @@ test('a vault custodian can amend an open line and a closed book stays locked', 
   const inwardBalance = after.body.rows.find((row) => (
     row.line_number > line.line_number && row.flow_direction === 'BAL'
   ));
-  assert.equal(outwardLine.in_or_out, 'CIT Out');
+  assert.equal(outwardLine.in_or_out, 'Out CIT');
   assert.equal(outwardLine.flow_direction, 'OUT');
   assert.equal(outwardLine.displays['TREASURY|GRAND|GRAND'], '- K10.00');
   assert.equal(outwardLine.displays['REISSUABLE|TOTAL|SUBTOTAL'], '- K10.00');
@@ -591,7 +599,7 @@ test('a vault custodian can amend an open line and a closed book stays locked', 
     path: `/api/books/${bookId}/entries/${line.line_number}`,
     token: custodian.body.token,
     body: {
-      accounting_label: 'In',
+      accounting_label: 'In ATM',
       line_reference: 'Vault slip',
       flow_direction: 'IN',
       custodian_one_initials: 'C.A.',
@@ -606,7 +614,7 @@ test('a vault custodian can amend an open line and a closed book stays locked', 
     token: custodian.body.token,
   });
   const restoredLine = restored.body.rows.find((row) => row.line_number === line.line_number);
-  assert.equal(restoredLine.in_or_out, 'In');
+  assert.equal(restoredLine.in_or_out, 'In ATM');
   assert.match(restoredLine.displays['TREASURY|GRAND|GRAND'], /^\+ K/);
   assert.equal(restored.body.position.ZMW.display, after.body.position.ZMW.display);
 
@@ -666,7 +674,7 @@ test('a vault custodian can amend an open line and a closed book stays locked', 
     path: `/api/books/${bookId}/entries/${line.line_number}`,
     token: master.body.token,
     body: {
-      accounting_label: 'In',
+      accounting_label: 'In ATM',
       line_reference: 'Admin test',
       flow_direction: 'IN',
       custodian_one_initials: 'C.A.',
@@ -694,7 +702,7 @@ test('a vault custodian can amend an open line and a closed book stays locked', 
     path: `/api/books/${bookId}/entries/${line.line_number}`,
     token: custodian.body.token,
     body: {
-      accounting_label: 'In',
+      accounting_label: 'In ATM',
       line_reference: 'Too late',
       flow_direction: 'IN',
       custodian_one_initials: 'C.A.',

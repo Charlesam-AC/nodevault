@@ -5,7 +5,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const { createPool, waitForDb } = require('./db');
 const { VaultError } = require('./services/errors');
 const { syncCatalogue } = require('./services/catalogue');
-const { seedDemo, ensureMasterAdmin } = require('./services/seed');
+const { seedDemo, ensureMasterAdmin, ensureCeremony } = require('./services/seed');
 const { ensureWorkingBooks } = require('./services/workingBooks');
 const { listBooks, listBookDates } = require('./services/books');
 const { businessMorning, isBusinessDay, zonedParts } = require('./services/calendar');
@@ -19,7 +19,19 @@ const {
   declareGazetted,
   cancelGazetted,
 } = require('./services/closures');
-const { holdersForDate, rotationView, captureHandover } = require('./services/rotation');
+const { holdersForDate, rotationView, captureHandover, takeoverSlip } = require('./services/rotation');
+const {
+  listMovementOptions,
+  addMovementOption,
+  updateMovementOption,
+  assertMovementOption,
+} = require('./services/movements');
+const {
+  canConductSurprise,
+  recordSurpriseCheck,
+  listSurpriseChecks,
+  surpriseSlip,
+} = require('./services/surprise');
 const { getBookView, insertLedgerRow, amendLedgerRow, writeCarriedDown } = require('./services/ledger');
 const { recordAudit } = require('./services/audit');
 const { executeThreePersonVaultLock, dispatchClosing } = require('./services/closing');
@@ -235,6 +247,8 @@ function buildApp(db) {
       break_glass: Boolean(req.user.breakGlassId),
       break_glass_expires_at: req.user.breakGlassExpires,
       can_act_as: isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId,
+      can_configure_movements: isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId,
+      can_surprise_check: canConductSurprise(req.user),
       acting_as: Boolean(req.user.actorUserId),
       actor_name: req.user.actorName,
     });
@@ -368,6 +382,70 @@ function buildApp(db) {
     res.status(201).json(captured);
   }));
 
+  app.get('/api/handovers/:handoverId/slip', guard, asyncRoute(async (req, res) => {
+    const slip = await takeoverSlip(db, req.user.tenantId, req.params.handoverId);
+    res.json(slip);
+  }));
+
+  app.get('/api/movement-options', guard, asyncRoute(async (req, res) => {
+    const options = await listMovementOptions(db, req.user.tenantId);
+    const brand = await db.query(
+      `SELECT bank_name, logo_label FROM bank_tenants WHERE tenant_id = $1`,
+      [req.user.tenantId],
+    );
+    res.json({
+      options,
+      bank_name: brand.rows[0] ? brand.rows[0].bank_name : '',
+      logo_label: brand.rows[0] ? brand.rows[0].logo_label : '',
+    });
+  }));
+
+  app.post('/api/movement-options', guard, asyncRoute(async (req, res) => {
+    const created = await addMovementOption(db, req.user, req.body);
+    res.status(201).json(created);
+  }));
+
+  app.patch('/api/movement-options/:optionId', guard, asyncRoute(async (req, res) => {
+    const updated = await updateMovementOption(db, req.user, req.params.optionId, req.body);
+    res.json(updated);
+  }));
+
+  app.patch('/api/brand', guard, asyncRoute(async (req, res) => {
+    if (!isMasterAdmin({ work_email: req.user.email }) || req.user.actorUserId) {
+      throw new VaultError('WRONG_ROLE', 'Only the master admin can set the bank mark', 403);
+    }
+    const logo = String(req.body.logo_label || '').trim().replace(/\s+/g, ' ');
+    if (logo.length < 1 || logo.length > 40) {
+      throw new VaultError('INVALID_LOGO', 'The bank mark is 1 to 40 characters');
+    }
+    await db.query(
+      `UPDATE bank_tenants SET logo_label = $1 WHERE tenant_id = $2`,
+      [logo, req.user.tenantId],
+    );
+    res.json({ logo_label: logo });
+  }));
+
+  app.get('/api/surprise-checks', guard, asyncRoute(async (req, res) => {
+    const branchId = req.user.branchId;
+    if (!branchId) throw new VaultError('NO_BRANCH', 'This profile is not attached to a branch', 409);
+    const date = req.query.date;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) {
+      throw new VaultError('INVALID_TIME', 'Choose the date the check belongs to');
+    }
+    const checks = await listSurpriseChecks(db, req.user.tenantId, branchId, date);
+    res.json({ checks });
+  }));
+
+  app.post('/api/surprise-checks', guard, asyncRoute(async (req, res) => {
+    const created = await recordSurpriseCheck(db, req.user, req.body);
+    res.status(201).json(created);
+  }));
+
+  app.get('/api/surprise-checks/:checkId/slip', guard, asyncRoute(async (req, res) => {
+    const slip = await surpriseSlip(db, req.user.tenantId, req.params.checkId);
+    res.json(slip);
+  }));
+
   app.get('/api/books/:bookId', guard, asyncRoute(async (req, res) => {
     await visibleBook(db, req.user, req.params.bookId);
     const view = await getBookView(db, req.user.tenantId, req.params.bookId);
@@ -382,6 +460,12 @@ function buildApp(db) {
     if (!movementHasAmount(req.body.amounts)) {
       throw new VaultError('INVALID_AMOUNT', 'Enter an amount on at least one denomination');
     }
+    await assertMovementOption(
+      db,
+      req.user.tenantId,
+      String(req.body.accounting_label || '').trim(),
+      req.body.flow_direction,
+    );
     const book = await db.query(
       `SELECT business_date::text AS business_date
        FROM branch_vault_books
@@ -425,6 +509,14 @@ function buildApp(db) {
     }
     if (req.body.flow_direction !== 'BAL' && !movementHasAmount(req.body.amounts)) {
       throw new VaultError('INVALID_AMOUNT', 'Enter an amount on at least one denomination');
+    }
+    if (req.body.flow_direction !== 'BAL') {
+      await assertMovementOption(
+        db,
+        req.user.tenantId,
+        String(req.body.accounting_label || '').trim(),
+        req.body.flow_direction,
+      );
     }
     const signatories = entrySignatories(req.body);
     const amended = await amendLedgerRow(db, {
@@ -619,6 +711,7 @@ async function start() {
   const db = createPool();
   await waitForDb(db);
   await syncCatalogue(db);
+  await ensureCeremony(db);
   if (process.env.SEED_DEMO_DATA === 'true') {
     await seedDemo(db);
     await ensureMasterAdmin(db);

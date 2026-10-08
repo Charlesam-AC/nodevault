@@ -195,6 +195,21 @@ function renderSpread(view) {
       tr.appendChild(td);
     }
     tbody.appendChild(tr);
+    if (Number(row.line_number) === 1 && view.narration && view.narration.text) {
+      const note = document.createElement('tr');
+      note.className = 'narration-row';
+      const cell = document.createElement('td');
+      cell.colSpan = flat.length;
+      cell.textContent = view.narration.text;
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'slip-open';
+      open.textContent = 'Takeover slip';
+      open.addEventListener('click', () => openTakeoverSlip(view.narration.handover_id));
+      cell.appendChild(open);
+      note.appendChild(cell);
+      tbody.appendChild(note);
+    }
   }
   table.replaceChildren(thead, tbody);
   if (typeof synchronizeHorizontalMatrixLayout === 'function') {
@@ -974,6 +989,323 @@ async function submitHandover(event) {
   }
 }
 
+function personLine(person) {
+  return `${person.fullLegalName || person.full_legal_name}, ${person.employeeId || person.employee_id}`;
+}
+
+function slipArticle(title, lines) {
+  const article = document.createElement('article');
+  const heading = document.createElement('h2');
+  heading.textContent = title;
+  article.appendChild(heading);
+  for (const line of lines) article.appendChild(line);
+  return article;
+}
+
+function paragraph(text, className) {
+  const p = document.createElement('p');
+  if (className) p.className = className;
+  p.textContent = text;
+  return p;
+}
+
+function signatureBlock(caption, people) {
+  const block = document.createElement('section');
+  block.className = 'slip-signs';
+  const heading = document.createElement('h3');
+  heading.textContent = caption;
+  block.appendChild(heading);
+  for (const person of people) {
+    const row = document.createElement('p');
+    row.className = 'slip-sign';
+    const name = document.createElement('span');
+    name.textContent = personLine(person);
+    const line = document.createElement('span');
+    line.className = 'sig-line';
+    line.textContent = 'Signature';
+    row.append(name, line);
+    block.appendChild(row);
+  }
+  return block;
+}
+
+function showSlip(dialogId, bodyId, node) {
+  const body = document.getElementById(bodyId);
+  body.replaceChildren(node);
+  document.getElementById(dialogId).showModal();
+}
+
+function printOpenSlip() {
+  document.body.classList.add('is-slip');
+  window.print();
+  document.body.classList.remove('is-slip');
+}
+
+function showTakeoverSlip(slip) {
+  const root = document.createElement('div');
+  root.append(
+    paragraph(slip.bank_name, 'slip-bank'),
+    paragraph(`${slip.branch_name} · ${slip.branch_code}`, 'slip-branch'),
+    paragraph(`Takeover ${slip.taken_over_at}`, 'slip-when'),
+  );
+  if (slip.head_teller) {
+    root.appendChild(paragraph(
+      `Head teller ${personLine(slip.head_teller)}. Printed for the record. Does not sign.`,
+      'slip-aside',
+    ));
+  }
+  for (const book of slip.books) {
+    const block = document.createElement('section');
+    block.className = 'slip-book';
+    const title = document.createElement('h3');
+    title.textContent = book.book_class === 'KWACHA_TREASURY'
+      ? 'Kwacha Treasury Book'
+      : book.book_class === 'FOREIGN_CURRENCY'
+        ? 'Foreign Currency Treasury Book'
+        : 'Bancs Treasury Book';
+    block.appendChild(title);
+    for (const total of book.totals) {
+      const figure = document.createElement('p');
+      figure.className = 'slip-total';
+      const strong = document.createElement('strong');
+      strong.textContent = `Total B/F ${total.figure}`;
+      figure.append(strong, document.createTextNode(` (${total.words})`));
+      block.appendChild(figure);
+    }
+    block.appendChild(paragraph(book.narration_text, 'slip-narration'));
+    root.appendChild(block);
+  }
+  root.append(
+    signatureBlock('Handing over', slip.handing_over),
+    signatureBlock('Taking over', slip.taking_over),
+  );
+  showSlip('takeover-slip', 'takeover-slip-body', root);
+}
+
+async function openTakeoverSlip(handoverId) {
+  showTakeoverSlip(await api(`/api/handovers/${handoverId}/slip`));
+}
+
+function showSurpriseSlip(slip) {
+  const root = document.createElement('div');
+  const mark = document.createElement('p');
+  mark.className = 'slip-logo';
+  mark.textContent = slip.logo_label || slip.bank_name;
+  root.append(
+    mark,
+    paragraph(slip.bank_name, 'slip-bank'),
+    paragraph(`${slip.branch_name} · ${slip.branch_code}`, 'slip-branch'),
+    paragraph(`Surprise cash check ${slip.checked_at_display}`, 'slip-when'),
+    paragraph(`${slip.checker_name}, ${slip.checker_employee_id} · ${slip.checker_role}`, 'slip-checker'),
+  );
+  const present = (slip.custodians_present || []).map(personLine);
+  root.appendChild(paragraph(
+    present.length
+      ? `Custodians present: ${present.join(' and ')}. They do not sign.`
+      : 'No custodian was assigned on this date.',
+    'slip-aside',
+  ));
+  for (const book of slip.books) {
+    const block = document.createElement('section');
+    block.className = 'slip-book';
+    const title = document.createElement('h3');
+    title.textContent = book.book_class === 'KWACHA_TREASURY'
+      ? 'Kwacha Treasury Book'
+      : book.book_class === 'FOREIGN_CURRENCY'
+        ? 'Foreign Currency Treasury Book'
+        : 'Bancs Treasury Book';
+    block.appendChild(title);
+    block.appendChild(paragraph(book.narration_text, 'slip-narration'));
+    root.appendChild(block);
+  }
+  root.appendChild(signatureBlock('Checker', [{
+    fullLegalName: slip.checker_name,
+    employeeId: slip.checker_employee_id,
+  }]));
+  showSlip('surprise-slip', 'surprise-slip-body', root);
+}
+
+function renderMovementOptions() {
+  const panel = document.getElementById('movement-panel');
+  if (!panel) return;
+  const allowed = Boolean(state.me && state.me.can_configure_movements);
+  panel.hidden = !allowed;
+  if (!allowed) return;
+  const options = state.movementOptions || [];
+  document.getElementById('movement-count').textContent = String(options.filter((option) => option.is_active).length);
+  const list = document.getElementById('movement-list');
+  list.replaceChildren();
+  for (const option of options) {
+    const row = document.createElement('form');
+    row.className = 'option-row';
+    const input = document.createElement('input');
+    input.value = option.label;
+    input.maxLength = 32;
+    input.required = true;
+    input.setAttribute('aria-label', `Rename ${option.label}`);
+    const meta = document.createElement('span');
+    meta.textContent = option.carries_down ? 'In · Bal c/d follows this' : option.flow_direction === 'IN' ? 'In' : 'Out';
+    const save = document.createElement('button');
+    save.type = 'submit';
+    save.textContent = 'Rename';
+    row.append(input, meta, save);
+    if (!option.carries_down) {
+      const retire = document.createElement('button');
+      retire.type = 'button';
+      retire.className = 'staff-quiet';
+      retire.textContent = option.is_active ? 'Retire' : 'Restore';
+      retire.addEventListener('click', async () => {
+        await api(`/api/movement-options/${option.option_id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ is_active: !option.is_active }),
+        });
+        state.movementOptions = (await api('/api/movement-options')).options;
+        renderMovementOptions();
+        if (state.book) fillEntryFlow();
+      });
+      row.appendChild(retire);
+    }
+    row.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      document.getElementById('movement-error').textContent = '';
+      try {
+        await api(`/api/movement-options/${option.option_id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ label: input.value.trim() }),
+        });
+        state.movementOptions = (await api('/api/movement-options')).options;
+        renderMovementOptions();
+        if (state.book) fillEntryFlow();
+      } catch (error) {
+        document.getElementById('movement-error').textContent = error.message;
+      }
+    });
+    list.appendChild(row);
+  }
+}
+
+async function renderSurprise(desk) {
+  const panel = document.getElementById('surprise-panel');
+  const review = document.getElementById('surprise-review');
+  review.replaceChildren();
+  const date = state.businessDate || (state.dates[0] && state.dates[0].business_date) || '';
+  let checks = [];
+  if (date) {
+    try {
+      checks = (await api(`/api/surprise-checks?date=${encodeURIComponent(date)}`)).checks;
+    } catch (_error) {
+      checks = [];
+    }
+  }
+  const heading = document.createElement('h3');
+  heading.textContent = 'Surprise cash checks';
+  const lead = document.createElement('p');
+  lead.className = 'hint';
+  lead.textContent = 'Shown at the date and time the check happened. A check is not a ledger line, so Bal b/f, Bal b/d, and Bal c/d stay as they were.';
+  review.append(heading, lead);
+  if (!checks.length) {
+    review.appendChild(paragraph('No surprise cash check is recorded for this date.'));
+  }
+  for (const check of checks) {
+    const card = document.createElement('article');
+    card.className = 'check-card';
+    card.append(
+      paragraph(`${check.checked_at_display} · ${check.checker_name}, ${check.checker_employee_id}`, 'check-when'),
+    );
+    for (const book of check.books) {
+      card.appendChild(paragraph(book.narration_text, 'slip-narration'));
+    }
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.textContent = 'Surprise check slip';
+    open.addEventListener('click', async () => {
+      showSurpriseSlip(await api(`/api/surprise-checks/${check.check_id}/slip`));
+    });
+    card.appendChild(open);
+    review.appendChild(card);
+  }
+  const allowed = Boolean(state.me && state.me.can_surprise_check && desk.deskOpen !== false && state.books.length);
+  panel.hidden = !allowed;
+  panel.replaceChildren();
+  if (!allowed) return;
+  const form = document.createElement('form');
+  form.id = 'surprise-form';
+  form.append(
+    paragraph('Surprise cash check', 'desk-kicker'),
+    paragraph('An auditor or the regional operations manager counts the vault. They stand outside the two custodian seats, so the custodians on duty are named as present and do not sign. The master admin can record one while not acting as someone else, which is how this desk is demonstrated. A vault custodian, the head teller, and a branch manager cannot check the cash they hold.', 'hint'),
+  );
+  const when = document.createElement('input');
+  when.id = 'surprise-when';
+  when.type = 'datetime-local';
+  when.required = true;
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  when.value = local;
+  form.appendChild(labeledField('Date and time', when));
+  const host = document.createElement('div');
+  host.id = 'surprise-counts';
+  form.appendChild(host);
+  const error = document.createElement('p');
+  error.id = 'surprise-error';
+  error.className = 'error';
+  const submit = document.createElement('button');
+  submit.type = 'submit';
+  submit.textContent = 'Record surprise cash check';
+  form.append(error, submit);
+  form.addEventListener('submit', submitSurprise);
+  panel.appendChild(form);
+  const counts = [];
+  for (const book of state.books) {
+    const view = await api(`/api/books/${book.book_id}`);
+    const block = document.createElement('fieldset');
+    const legend = document.createElement('legend');
+    legend.textContent = `${view.layout.title} · system position`;
+    block.appendChild(legend);
+    const fields = {};
+    for (const [currency, value] of Object.entries(view.position || {})) {
+      if (currency === 'error' || !value || !value.decimal) continue;
+      const input = document.createElement('input');
+      input.value = value.decimal;
+      input.inputMode = 'decimal';
+      input.required = true;
+      input.dataset.currency = currency;
+      fields[currency] = input;
+      block.appendChild(labeledField(`${currency} counted (${value.display} on the book)`, input));
+    }
+    host.appendChild(block);
+    counts.push({ book_class: book.book_class, fields });
+  }
+  form.dataset.ready = '1';
+  form._counts = counts;
+}
+
+async function submitSurprise(event) {
+  event.preventDefault();
+  const error = document.getElementById('surprise-error');
+  error.textContent = '';
+  const form = event.currentTarget;
+  const when = document.getElementById('surprise-when').value;
+  const books = (form._counts || []).map((book) => {
+    const counted = {};
+    for (const [currency, input] of Object.entries(book.fields)) counted[currency] = input.value.trim();
+    return { book_class: book.book_class, counted };
+  });
+  try {
+    const created = await api('/api/surprise-checks', {
+      method: 'POST',
+      body: JSON.stringify({
+        checked_at: new Date(when).toISOString(),
+        business_date: state.businessDate,
+        books,
+      }),
+    });
+    showSurpriseSlip(await api(`/api/surprise-checks/${created.check_id}/slip`));
+    await renderSurprise({ deskOpen: true });
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
 function entraCopy(enabled) {
   return enabled
     ? 'Directory sign-in is on. Turn it off to allow manual desk passwords. Break-glass requires manual override.'
@@ -1712,13 +2044,15 @@ function renderEntry(view) {
   document.getElementById('entry-submit').textContent = 'Post the line';
   document.getElementById('entry-cancel').hidden = true;
   document.getElementById('entry-flow').disabled = false;
+  const carry = view.carry_label || 'In Vault';
   note.textContent = view.square_required
-    ? 'Amounts, not pieces. Post the line, then write Bal c/d so the sheet squares.'
+    ? `Amounts, not pieces. Bal c/d is written only after ${carry}.`
     : 'Amounts, not pieces. The line is appended to this open book.';
   if (canAmendBook(view)) {
     note.textContent += ' Amend any line while this book is open. A later Bal c/d follows the corrected position.';
   }
   document.getElementById('entry-square').hidden = !view.square_required;
+  fillEntryFlow();
   const initials = rosterInitials();
   document.getElementById('entry-c1').value = initials.c1;
   document.getElementById('entry-c2').value = initials.c2;
@@ -1754,26 +2088,27 @@ function renderEntry(view) {
   }
 }
 
-const FLOW_LABELS = {
-  CIT_IN: 'CIT In',
-  CIT_OUT: 'CIT Out',
-  IN: 'In',
-  OUT: 'Out',
-};
+function fillEntryFlow(selected) {
+  const flow = document.getElementById('entry-flow');
+  const options = (state.movementOptions || []).filter((option) => option.is_active);
+  flow.replaceChildren();
+  for (const option of options) {
+    const item = document.createElement('option');
+    item.value = option.label;
+    item.textContent = option.label;
+    item.dataset.flow = option.flow_direction;
+    flow.appendChild(item);
+  }
+  if (selected && [...flow.options].some((option) => option.value === selected)) flow.value = selected;
+}
 
 function entryMovement() {
-  const choice = document.getElementById('entry-flow').value;
+  const flow = document.getElementById('entry-flow');
+  const choice = flow.selectedOptions[0];
   const reference = document.getElementById('entry-label').value.trim();
-  if (choice === 'CIT_IN' || choice === 'CIT_OUT') {
-    return {
-      flow_direction: choice === 'CIT_IN' ? 'IN' : 'OUT',
-      accounting_label: FLOW_LABELS[choice],
-      line_reference: reference,
-    };
-  }
   return {
-    flow_direction: choice,
-    accounting_label: reference,
+    flow_direction: choice ? choice.dataset.flow : 'IN',
+    accounting_label: flow.value,
     line_reference: reference,
   };
 }
@@ -1792,9 +2127,12 @@ function startAmend(row) {
     flow.disabled = true;
   } else {
     flow.disabled = false;
-    if (row.in_or_out === 'CIT In') flow.value = 'CIT_IN';
-    else if (row.in_or_out === 'CIT Out') flow.value = 'CIT_OUT';
-    else flow.value = row.flow_direction === 'OUT' ? 'OUT' : 'IN';
+    const named = (state.movementOptions || []).find((option) => option.label === row.accounting_label || option.label === row.in_or_out);
+    if (named) flow.value = named.label;
+    else {
+      const same = (state.movementOptions || []).find((option) => option.flow_direction === row.flow_direction && option.is_active);
+      if (same) flow.value = same.label;
+    }
   }
   document.getElementById('entry-label').value = row.reference || row.accounting_label || '';
   document.getElementById('entry-c1').value = row.custodian_one_initials || '';
@@ -1886,6 +2224,21 @@ async function enterDesk(date) {
   renderRotation(desk.rotation || { posts: [] });
   renderFlags(desk.carryFlags);
   renderHandover(desk.rotation || { due: [] }, desk.deskOpen);
+  try {
+    const catalogue = await api('/api/movement-options');
+    state.movementOptions = catalogue.options;
+    state.logoLabel = catalogue.logo_label || '';
+  } catch (_error) {
+    state.movementOptions = state.movementOptions || [];
+  }
+  renderMovementOptions();
+  const logo = document.getElementById('brand-logo');
+  if (logo && document.activeElement !== logo) logo.value = state.logoLabel || '';
+  try {
+    await renderSurprise(desk);
+  } catch (error) {
+    document.getElementById('surprise-review').textContent = error.message;
+  }
   const ledger = document.getElementById('ledger-panel');
   ledger.hidden = !desk.deskOpen;
   if (!desk.deskOpen) {
@@ -1986,11 +2339,55 @@ document.getElementById('login-form').addEventListener('submit', async (event) =
 document.getElementById('sign-out').addEventListener('click', showLogin);
 
 document.getElementById('entry-flow').addEventListener('change', () => {
-  const input = document.getElementById('entry-label');
-  const current = input.value.trim();
-  const defaults = new Set(['', ...Object.values(FLOW_LABELS)]);
-  if (defaults.has(current)) input.value = FLOW_LABELS[document.getElementById('entry-flow').value] || current;
+  document.getElementById('entry-label').focus();
 });
+
+document.getElementById('movement-add').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const error = document.getElementById('movement-error');
+  error.textContent = '';
+  try {
+    await api('/api/movement-options', {
+      method: 'POST',
+      body: JSON.stringify({
+        label: document.getElementById('movement-label').value,
+        flow_direction: document.getElementById('movement-flow').value,
+      }),
+    });
+    document.getElementById('movement-label').value = '';
+    const catalogue = await api('/api/movement-options');
+    state.movementOptions = catalogue.options;
+    renderMovementOptions();
+    fillEntryFlow();
+  } catch (err) {
+    error.textContent = err.message;
+  }
+});
+
+document.getElementById('brand-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const note = document.getElementById('brand-note');
+  note.textContent = '';
+  try {
+    const saved = await api('/api/brand', {
+      method: 'PATCH',
+      body: JSON.stringify({ logo_label: document.getElementById('brand-logo').value }),
+    });
+    state.logoLabel = saved.logo_label;
+    note.textContent = `The surprise-check slip now uses ${saved.logo_label}.`;
+  } catch (err) {
+    note.textContent = err.message;
+  }
+});
+
+document.getElementById('takeover-slip-close').addEventListener('click', () => {
+  document.getElementById('takeover-slip').close();
+});
+document.getElementById('surprise-slip-close').addEventListener('click', () => {
+  document.getElementById('surprise-slip').close();
+});
+document.getElementById('takeover-slip-print').addEventListener('click', printOpenSlip);
+document.getElementById('surprise-slip-print').addEventListener('click', printOpenSlip);
 
 document.getElementById('book-date').addEventListener('change', () => {
   enterDesk(document.getElementById('book-date').value).catch((error) => {
