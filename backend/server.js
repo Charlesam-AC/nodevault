@@ -23,7 +23,6 @@ const { holdersForDate, rotationView, captureHandover, takeoverSlip, printTakeov
 const {
   listMovementOptions,
   addMovementOption,
-  updateMovementOption,
   assertMovementOption,
 } = require('./services/movements');
 const {
@@ -437,11 +436,6 @@ function buildApp(db) {
   app.post('/api/movement-options', guard, asyncRoute(async (req, res) => {
     const created = await addMovementOption(db, req.user, req.body);
     res.status(201).json(created);
-  }));
-
-  app.patch('/api/movement-options/:optionId', guard, asyncRoute(async (req, res) => {
-    const updated = await updateMovementOption(db, req.user, req.params.optionId, req.body);
-    res.json(updated);
   }));
 
   app.patch('/api/brand', guard, asyncRoute(async (req, res) => {

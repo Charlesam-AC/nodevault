@@ -46,21 +46,66 @@ function present(row) {
   };
 }
 
+async function restoreBuiltinNames(db, tenantId) {
+  const result = await db.query(
+    `SELECT option_id, label, flow_direction, carries_down, sort_order, is_active
+     FROM movement_options
+     WHERE tenant_id = $1
+     ORDER BY sort_order, option_id`,
+    [tenantId],
+  );
+  const rows = result.rows;
+  for (let index = 0; index < DEFAULTS.length; index += 1) {
+    const item = DEFAULTS[index];
+    const exact = rows.find((row) => row.label === item.label);
+    if (exact && exact.flow_direction === item.flowDirection && exact.carries_down === item.carriesDown) {
+      if (!exact.is_active) {
+        await db.query(
+          `UPDATE movement_options SET is_active = true WHERE option_id = $1 AND tenant_id = $2`,
+          [exact.option_id, tenantId],
+        );
+        exact.is_active = true;
+      }
+      continue;
+    }
+    if (exact) continue;
+    const candidate = rows.find((row) => (
+      item.carriesDown
+        ? row.carries_down && row.flow_direction === 'IN'
+        : !row.carries_down
+          && row.sort_order === index + 1
+          && row.flow_direction === item.flowDirection
+          && !DEFAULTS.some((builtin) => builtin.label === row.label)
+    ));
+    if (!candidate) continue;
+    await db.query(
+      `UPDATE movement_options
+       SET label = $1, is_active = true
+       WHERE option_id = $2 AND tenant_id = $3`,
+      [item.label, candidate.option_id, tenantId],
+    );
+    candidate.label = item.label;
+    candidate.is_active = true;
+  }
+}
+
 async function ensureMovementOptions(db, tenantId) {
   const existing = await db.query(
     `SELECT option_id FROM movement_options WHERE tenant_id = $1 LIMIT 1`,
     [tenantId],
   );
-  if (existing.rowCount > 0) return;
-  for (let index = 0; index < DEFAULTS.length; index += 1) {
-    const item = DEFAULTS[index];
-    await db.query(
-      `INSERT INTO movement_options
-         (tenant_id, label, flow_direction, carries_down, sort_order)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [tenantId, item.label, item.flowDirection, item.carriesDown, index + 1],
-    );
+  if (existing.rowCount === 0) {
+    for (let index = 0; index < DEFAULTS.length; index += 1) {
+      const item = DEFAULTS[index];
+      await db.query(
+        `INSERT INTO movement_options
+           (tenant_id, label, flow_direction, carries_down, sort_order)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [tenantId, item.label, item.flowDirection, item.carriesDown, index + 1],
+      );
+    }
   }
+  await restoreBuiltinNames(db, tenantId);
 }
 
 async function listMovementOptions(db, tenantId) {
@@ -119,47 +164,6 @@ async function addMovementOption(db, actor, body) {
   }
 }
 
-async function updateMovementOption(db, actor, optionId, body) {
-  assertOptionManager(actor);
-  const current = await db.query(
-    `SELECT option_id, label, flow_direction, carries_down, sort_order, is_active
-     FROM movement_options
-     WHERE option_id = $1 AND tenant_id = $2`,
-    [optionId, actor.tenantId],
-  );
-  if (current.rowCount !== 1) {
-    throw new VaultError('OPTION_NOT_FOUND', 'That In or Out option is not on this bank', 404);
-  }
-  const row = current.rows[0];
-  const label = body.label === undefined ? row.label : cleanLabel(body.label);
-  const flow = body.flow_direction === undefined && body.flowDirection === undefined
-    ? row.flow_direction
-    : cleanFlow(body.flow_direction || body.flowDirection);
-  let active = row.is_active;
-  if (body.is_active !== undefined) active = Boolean(body.is_active);
-  if (row.carries_down && !active) {
-    throw new VaultError('CARRY_PROTECTED', 'In Vault stays on the list because Bal c/d follows it', 409);
-  }
-  if (row.carries_down && flow !== 'IN') {
-    throw new VaultError('CARRY_PROTECTED', 'The carry line stays an In option', 409);
-  }
-  try {
-    const updated = await db.query(
-      `UPDATE movement_options
-       SET label = $1, flow_direction = $2, is_active = $3
-       WHERE option_id = $4 AND tenant_id = $5
-       RETURNING option_id, label, flow_direction, carries_down, sort_order, is_active`,
-      [label, flow, active, optionId, actor.tenantId],
-    );
-    return present(updated.rows[0]);
-  } catch (error) {
-    if (String(error.message).includes('movement_options_tenant_id_label_key')) {
-      throw new VaultError('INVALID_OPTION', 'That In or Out option is already on the list', 409);
-    }
-    throw error;
-  }
-}
-
 module.exports = {
   DEFAULTS,
   ensureMovementOptions,
@@ -167,5 +171,4 @@ module.exports = {
   carryLabel,
   assertMovementOption,
   addMovementOption,
-  updateMovementOption,
 };

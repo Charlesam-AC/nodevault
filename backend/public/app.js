@@ -1470,55 +1470,6 @@ function renderMovementOptions() {
   if (!allowed) return;
   const options = state.movementOptions || [];
   document.getElementById('movement-count').textContent = String(options.filter((option) => option.is_active).length);
-  const list = document.getElementById('movement-list');
-  list.replaceChildren();
-  for (const option of options) {
-    const row = document.createElement('form');
-    row.className = 'option-row';
-    const input = document.createElement('input');
-    input.value = option.label;
-    input.maxLength = 32;
-    input.required = true;
-    input.setAttribute('aria-label', `Rename ${option.label}`);
-    const meta = document.createElement('span');
-    meta.textContent = option.carries_down ? 'In · Bal c/d follows this' : option.flow_direction === 'IN' ? 'In' : 'Out';
-    const save = document.createElement('button');
-    save.type = 'submit';
-    save.textContent = 'Rename';
-    row.append(input, meta, save);
-    if (!option.carries_down) {
-      const retire = document.createElement('button');
-      retire.type = 'button';
-      retire.className = 'staff-quiet';
-      retire.textContent = option.is_active ? 'Retire' : 'Restore';
-      retire.addEventListener('click', async () => {
-        await api(`/api/movement-options/${option.option_id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ is_active: !option.is_active }),
-        });
-        state.movementOptions = (await api('/api/movement-options')).options;
-        renderMovementOptions();
-        if (state.book) fillEntryFlow();
-      });
-      row.appendChild(retire);
-    }
-    row.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      document.getElementById('movement-error').textContent = '';
-      try {
-        await api(`/api/movement-options/${option.option_id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ label: input.value.trim() }),
-        });
-        state.movementOptions = (await api('/api/movement-options')).options;
-        renderMovementOptions();
-        if (state.book) fillEntryFlow();
-      } catch (error) {
-        document.getElementById('movement-error').textContent = error.message;
-      }
-    });
-    list.appendChild(row);
-  }
 }
 
 async function renderSurprise(desk) {

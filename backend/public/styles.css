@@ -2028,14 +2028,13 @@ body:not(.is-gate) #role-panel :is(input, select):focus {
   padding: 0.75rem 0.9rem;
 }
 .narration-row .slip-open { margin-top: 0.55rem; }
-#movement-add, #brand-form, .option-row {
+#movement-add, #brand-form {
   display: flex;
   flex-wrap: wrap;
   gap: 0.55rem;
   align-items: end;
   margin: 0.8rem 0;
 }
-.option-row input { flex: 1 1 12rem; margin: 0; }
 #surprise-panel, #surprise-review {
   margin: 1rem 0 0;
   color: #102833;

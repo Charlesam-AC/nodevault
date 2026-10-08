@@ -48,7 +48,7 @@ The record keeps the checker's full legal name, employee ID, role, and the date 
 
 ## In or Out
 
-The master admin sets the In or Out list. A new bank starts with Out ATM, In ATM, In CIT, Out CIT, Out Vault, and In Vault. Options can be added, renamed, or retired. In Vault stays, because Bal c/d is written only on the line after In Vault. Bal b/f, Bal b/d, and Bal c/d remain the balance labels and are not options in that list.
+The master admin can add an In or Out option. A new bank starts with Out ATM, In ATM, In CIT, Out CIT, Out Vault, and In Vault, and those six keep those names. In Vault stays, because Bal c/d is written only on the line after In Vault. Bal b/f, Bal b/d, and Bal c/d remain the balance labels and are not options in that list.
 
 Saturday 3 October 2026 is a trading day. The photographed sample is locked on that date and is the Bal c/d Monday 5 October brings forward. Friday 2 October 2026 is also locked, which is what a Saturday morning would roll forward. The Saturday book is the sample itself, so the morning job does not insert a second Bal b/f on top of it. The desk shows that Saturday book while Saturday is the business morning.
 

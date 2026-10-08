@@ -4,10 +4,11 @@ const bcrypt = require('bcryptjs');
 const { captureHandover } = require('../services/rotation');
 const { getBookView, insertLedgerRow, writeCarriedDown } = require('../services/ledger');
 const { createBookWithRows } = require('../services/books');
+const fs = require('fs');
+const path = require('path');
 const {
   listMovementOptions,
   addMovementOption,
-  updateMovementOption,
 } = require('../services/movements');
 const { recordSurpriseCheck } = require('../services/surprise');
 const { VaultError } = require('../services/errors');
@@ -322,15 +323,53 @@ test('In or Out options are configurable and Bal c/d follows In Vault', async ()
     flow_direction: 'IN',
   });
   assert.equal(added.label, 'In Night Safe');
-  const renamed = await updateMovementOption(applicationPool, admin, options[0].option_id, {
-    label: 'Out ATM Kitwe',
-  });
-  assert.equal(renamed.label, 'Out ATM Kitwe');
-  const vault = options.find((option) => option.carries_down);
-  await assert.rejects(
-    () => updateMovementOption(applicationPool, admin, vault.option_id, { is_active: false }),
-    (error) => error instanceof VaultError && error.code === 'CARRY_PROTECTED',
+  assert.equal(require('../services/movements').updateMovementOption, undefined);
+  const serverSource = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const deskSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const deskHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  assert.equal(serverSource.includes('/api/movement-options/:optionId'), false);
+  assert.equal(deskHtml.includes('movement-list'), false);
+  assert.equal(deskSource.includes("textContent = 'Rename'"), false);
+  assert.equal(deskSource.includes("textContent = option.is_active ? 'Retire' : 'Restore'"), false);
+
+  await applicationPool.query(
+    `UPDATE movement_options
+     SET label = 'Out ATM Kitwe', is_active = false
+     WHERE tenant_id = $1 AND label = 'Out ATM'`,
+    [desk.tenantId],
   );
+  const renamedBook = await createBookWithRows(applicationPool, {
+    tenantId: desk.tenantId,
+    branchId: desk.branchId,
+    bookClass: 'KWACHA_TREASURY',
+    businessDate: '2026-10-07',
+    rows: [kwachaRows[0]],
+    mirrorCore: false,
+  });
+  await insertLedgerRow(applicationPool, {
+    tenantId: desk.tenantId,
+    bookId: renamedBook,
+    transactionDate: '2026-10-07',
+    custodianOneInitials: 'C.A.',
+    custodianTwoInitials: 'J.P.',
+    tellerCoordInitials: 'M.K.',
+    accountingLabel: 'Out ATM Kitwe',
+    flowDirection: 'OUT',
+    amounts: { REISSUABLE: { K10: '10.00' } },
+  });
+  const healed = await listMovementOptions(applicationPool, desk.tenantId);
+  assert.deepEqual(healed.filter((option) => option.sort_order <= 6).map((option) => option.label), [
+    'Out ATM', 'In ATM', 'In CIT', 'Out CIT', 'Out Vault', 'In Vault',
+  ]);
+  assert.equal(healed.find((option) => option.label === 'Out ATM').is_active, true);
+  assert.equal(healed.some((option) => option.label === 'In Night Safe'), true);
+  const kept = await applicationPool.query(
+    `SELECT accounting_label FROM vault_denomination_matrix_ledger
+     WHERE book_id = $1 AND accounting_label = 'Out ATM Kitwe'`,
+    [renamedBook],
+  );
+  assert.equal(kept.rowCount, 1);
+
   await assert.rejects(
     () => addMovementOption(applicationPool, {
       email: 'charles.amulike@demo-bank.example',
@@ -361,7 +400,7 @@ test('In or Out options are configurable and Bal c/d follows In Vault', async ()
   await insertLedgerRow(applicationPool, {
     ...initials,
     transactionDate: '2026-10-06',
-    accountingLabel: 'Out ATM Kitwe',
+    accountingLabel: 'Out ATM',
     flowDirection: 'OUT',
     amounts: { REISSUABLE: { K10: '10.00' } },
   });
@@ -380,7 +419,7 @@ test('In or Out options are configurable and Bal c/d follows In Vault', async ()
   const view = await getBookView(applicationPool, desk.tenantId, bookId);
   assert.equal(view.rows.at(-1).accounting_label, 'Bal c/d');
   assert.equal(view.rows.at(-1).line_number, squared.lineNumber);
-  assert.equal(view.rows.some((row) => row.in_or_out === 'Out ATM Kitwe'), true);
+  assert.equal(view.rows.some((row) => row.in_or_out === 'Out ATM'), true);
   assert.equal(view.rows.some((row) => row.in_or_out === 'In Vault'), true);
   assert.equal(view.rows[0].in_or_out, 'Bal b/f');
 });
