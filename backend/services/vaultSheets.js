@@ -151,7 +151,7 @@ async function createVaultSheet(db, user, branchId, body, deps = {}) {
     throw new VaultError('WRONG_DATE', 'operating_date must be YYYY-MM-DD');
   }
   const amounts = body.books && typeof body.books === 'object' ? body.books : {};
-  const label = body.direction === 'FROM_VAULT' ? 'Out Vault' : 'In Vault';
+  const label = body.direction === 'FROM_VAULT' ? 'Out' : 'In';
   const flow = body.direction === 'FROM_VAULT' ? 'OUT' : 'IN';
   const client = await db.connect();
   let sheetId;

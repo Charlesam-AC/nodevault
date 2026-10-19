@@ -14,7 +14,7 @@ const A4 = {
 };
 
 const LOGO_DIR = path.join(__dirname, '..', 'assets', 'logos');
-const DEFAULT_LOGO = 'fnb-logo-placeholder.png';
+const DEFAULT_LOGO = 'fnb-acacia.png';
 const MARGIN = { top: 96, bottom: 36, left: 28, right: 28 };
 
 const BOOK_TITLE = {
@@ -208,6 +208,17 @@ async function renderClosingSheet({
   return done;
 }
 
+function strokePanel(doc, layout, top) {
+  const width = A4[layout][0] - MARGIN.left - MARGIN.right;
+  const height = Math.max(18, doc.y - top + 6);
+  doc.save();
+  doc.roundedRect(MARGIN.left - 4, top - 3, width + 8, height, 4)
+    .lineWidth(0.7)
+    .strokeColor('#9bb0b8')
+    .stroke();
+  doc.restore();
+}
+
 function personCaption(person) {
   return {
     full_legal_name: person.fullLegalName || person.full_legal_name,
@@ -227,13 +238,15 @@ async function renderTakeoverSlip({ slip, logoFile }) {
   ]);
   for (const book of slip.books) {
     ensureRoom(doc, logoPath, 'portrait', 70);
+    const top = doc.y;
     writeLine(doc, BOOK_TITLE[book.book_class] || book.book_class, { bold: true, size: 11, layout: 'portrait' });
     for (const total of book.totals) {
       writeLine(doc, `Total B/F ${total.figure}`, { bold: true, size: 10, layout: 'portrait' });
       writeLine(doc, total.words, { size: 9, layout: 'portrait' });
     }
     writeLine(doc, book.narration_text, { size: 9, layout: 'portrait' });
-    doc.moveDown(0.4);
+    strokePanel(doc, 'portrait', top);
+    doc.moveDown(0.45);
   }
   const people = [
     ...slip.handing_over.map((person) => personCaption({ ...person, role: 'Handing over' })),
@@ -265,12 +278,17 @@ async function renderSurpriseSlip({ slip, logoFile }) {
   );
   for (const book of slip.books) {
     ensureRoom(doc, logoPath, 'portrait', 60);
+    const top = doc.y;
     writeLine(doc, BOOK_TITLE[book.book_class] || book.book_class, { bold: true, size: 11, layout: 'portrait' });
-    const system = (book.system_totals || []).map((item) => item.figure).join(', ');
-    const counted = (book.counted_totals || []).map((item) => item.figure).join(', ');
-    if (system) writeLine(doc, `Book position ${system}`, { bold: true, layout: 'portrait' });
-    if (counted) writeLine(doc, `Counted ${counted}`, { bold: true, layout: 'portrait' });
+    for (const item of book.system_totals || []) {
+      writeLine(doc, `Book position ${item.figure}`, { bold: true, layout: 'portrait' });
+    }
+    for (const item of book.counted_totals || []) {
+      writeLine(doc, `Counted ${item.figure}`, { bold: true, layout: 'portrait' });
+    }
     writeLine(doc, book.narration_text, { size: 9, layout: 'portrait' });
+    strokePanel(doc, 'portrait', top);
+    doc.moveDown(0.45);
   }
   signatureBand(doc, logoPath, 'portrait', [{
     full_legal_name: slip.checker_name,

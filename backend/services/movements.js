@@ -2,13 +2,13 @@ const { VaultError } = require('./errors');
 const { isMasterAdmin } = require('../middleware/auth');
 
 const DEFAULTS = [
-  { label: 'Out ATM', flowDirection: 'OUT', carriesDown: false },
-  { label: 'In ATM', flowDirection: 'IN', carriesDown: false },
-  { label: 'In CIT', flowDirection: 'IN', carriesDown: false },
-  { label: 'Out CIT', flowDirection: 'OUT', carriesDown: false },
-  { label: 'Out Vault', flowDirection: 'OUT', carriesDown: false },
-  { label: 'In Vault', flowDirection: 'IN', carriesDown: true },
+  { label: 'In', flowDirection: 'IN', carriesDown: false },
+  { label: 'Out', flowDirection: 'OUT', carriesDown: false },
+  { label: 'CIT In', flowDirection: 'IN', carriesDown: false },
+  { label: 'CIT Out', flowDirection: 'OUT', carriesDown: false },
 ];
+
+const RETIRED = ['Out ATM', 'In ATM', 'In CIT', 'Out CIT', 'Out Vault', 'In Vault'];
 
 function assertOptionManager(actor) {
   if (!actor || !isMasterAdmin({ work_email: actor.email }) || actor.actorUserId) {
@@ -46,66 +46,63 @@ function present(row) {
   };
 }
 
-async function restoreBuiltinNames(db, tenantId) {
-  const result = await db.query(
+async function insertDefault(db, tenantId, item, sortOrder) {
+  await db.query(
+    `INSERT INTO movement_options
+       (tenant_id, label, flow_direction, carries_down, sort_order, is_active)
+     VALUES ($1, $2, $3, $4, $5, true)`,
+    [tenantId, item.label, item.flowDirection, item.carriesDown, sortOrder],
+  );
+}
+
+async function ensureMovementOptions(db, tenantId) {
+  const existing = await db.query(
     `SELECT option_id, label, flow_direction, carries_down, sort_order, is_active
      FROM movement_options
      WHERE tenant_id = $1
      ORDER BY sort_order, option_id`,
     [tenantId],
   );
-  const rows = result.rows;
+  if (existing.rowCount === 0) {
+    for (let index = 0; index < DEFAULTS.length; index += 1) {
+      await insertDefault(db, tenantId, DEFAULTS[index], index + 1);
+    }
+    return;
+  }
+
+  await db.query(
+    `UPDATE movement_options
+     SET is_active = false
+     WHERE tenant_id = $1 AND label = ANY($2::text[])`,
+    [tenantId, RETIRED],
+  );
+
+  const rows = existing.rows;
   for (let index = 0; index < DEFAULTS.length; index += 1) {
     const item = DEFAULTS[index];
     const exact = rows.find((row) => row.label === item.label);
-    if (exact && exact.flow_direction === item.flowDirection && exact.carries_down === item.carriesDown) {
-      if (!exact.is_active) {
-        await db.query(
-          `UPDATE movement_options SET is_active = true WHERE option_id = $1 AND tenant_id = $2`,
-          [exact.option_id, tenantId],
-        );
-        exact.is_active = true;
-      }
+    if (!exact) {
+      await insertDefault(db, tenantId, item, index + 1);
       continue;
     }
-    if (exact) continue;
-    const candidate = rows.find((row) => (
-      item.carriesDown
-        ? row.carries_down && row.flow_direction === 'IN'
-        : !row.carries_down
-          && row.sort_order === index + 1
-          && row.flow_direction === item.flowDirection
-          && !DEFAULTS.some((builtin) => builtin.label === row.label)
-    ));
-    if (!candidate) continue;
     await db.query(
       `UPDATE movement_options
-       SET label = $1, is_active = true
-       WHERE option_id = $2 AND tenant_id = $3`,
-      [item.label, candidate.option_id, tenantId],
+       SET flow_direction = $1, sort_order = $2, is_active = true
+       WHERE option_id = $3 AND tenant_id = $4`,
+      [item.flowDirection, index + 1, exact.option_id, tenantId],
     );
-    candidate.label = item.label;
-    candidate.is_active = true;
   }
-}
 
-async function ensureMovementOptions(db, tenantId) {
-  const existing = await db.query(
-    `SELECT option_id FROM movement_options WHERE tenant_id = $1 LIMIT 1`,
-    [tenantId],
-  );
-  if (existing.rowCount === 0) {
-    for (let index = 0; index < DEFAULTS.length; index += 1) {
-      const item = DEFAULTS[index];
-      await db.query(
-        `INSERT INTO movement_options
-           (tenant_id, label, flow_direction, carries_down, sort_order)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [tenantId, item.label, item.flowDirection, item.carriesDown, index + 1],
-      );
-    }
+  const customs = rows.filter((row) => (
+    !DEFAULTS.some((item) => item.label === row.label)
+    && !RETIRED.includes(row.label)
+  ));
+  for (let index = 0; index < customs.length; index += 1) {
+    await db.query(
+      `UPDATE movement_options SET sort_order = $1 WHERE option_id = $2 AND tenant_id = $3`,
+      [DEFAULTS.length + 1 + index, customs[index].option_id, tenantId],
+    );
   }
-  await restoreBuiltinNames(db, tenantId);
 }
 
 async function listMovementOptions(db, tenantId) {
@@ -123,7 +120,7 @@ async function listMovementOptions(db, tenantId) {
 async function carryLabel(db, tenantId) {
   const options = await listMovementOptions(db, tenantId);
   const gate = options.find((option) => option.carries_down && option.is_active);
-  return gate ? gate.label : 'In Vault';
+  return gate ? gate.label : null;
 }
 
 async function assertMovementOption(db, tenantId, label, flowDirection) {
@@ -148,12 +145,13 @@ async function addMovementOption(db, actor, body) {
      FROM movement_options WHERE tenant_id = $1`,
     [actor.tenantId],
   );
+  const sortOrder = Math.max(Number(next.rows[0].sort_order), DEFAULTS.length + 1);
   try {
     const inserted = await db.query(
       `INSERT INTO movement_options (tenant_id, label, flow_direction, carries_down, sort_order)
        VALUES ($1, $2, $3, false, $4)
        RETURNING option_id, label, flow_direction, carries_down, sort_order, is_active`,
-      [actor.tenantId, label, flow, next.rows[0].sort_order],
+      [actor.tenantId, label, flow, sortOrder],
     );
     return present(inserted.rows[0]);
   } catch (error) {
@@ -166,6 +164,7 @@ async function addMovementOption(db, actor, body) {
 
 module.exports = {
   DEFAULTS,
+  RETIRED,
   ensureMovementOptions,
   listMovementOptions,
   carryLabel,

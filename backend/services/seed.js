@@ -166,6 +166,12 @@ async function ensureCeremony(db) {
   );
   for (const tenant of tenants.rows) {
     await ensureMovementOptions(db, tenant.tenant_id);
+    await db.query(
+      `UPDATE bank_tenants
+       SET logo_file = 'fnb-acacia.png'
+       WHERE tenant_id = $1 AND logo_file = 'fnb-logo-placeholder.png'`,
+      [tenant.tenant_id],
+    );
     if (!tenant.logo_label && tenant.corporate_domain === 'demo-bank.example') {
       await db.query(
         `UPDATE bank_tenants SET logo_label = 'FNB' WHERE tenant_id = $1`,

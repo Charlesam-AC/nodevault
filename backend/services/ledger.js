@@ -417,6 +417,7 @@ async function getBookView(db, tenantId, bookId) {
   const rows = await loadRows(db, bookId);
   let position = null;
   let squareRequired = false;
+  let denominationPosition = null;
   if (rows.length) {
     try {
       const map = runningPosition(rows);
@@ -439,6 +440,7 @@ async function getBookView(db, tenantId, bookId) {
         && last.accountingLabel === 'Bal c/d'
         && sameMap(map, mapFromCells(last.cells));
       squareRequired = !squared;
+      denominationPosition = amountsFromCells(cellsFromMap(record.book_class, map));
     } catch (error) {
       if (!(error instanceof VaultError)) throw error;
       position = { error: error.message };
@@ -455,6 +457,7 @@ async function getBookView(db, tenantId, bookId) {
     layout: publicLayout(record.book_class),
     rows: presentRows(record.book_class, rows),
     position,
+    denomination_position: denominationPosition,
     square_required: squareRequired,
     carry_label: await carryLabel(db, tenantId),
     narration: narration.rowCount ? {
@@ -500,10 +503,6 @@ async function writeCarriedDown(db, {
       && sameMap(map, mapFromCells(last.cells))
     ) {
       throw new VaultError('ALREADY_SQUARE', 'The carried-down row already matches the book', 409);
-    }
-    const gate = await carryLabel(client, tenantId);
-    if (!last || last.accountingLabel !== gate) {
-      throw new VaultError('IN_VAULT_REQUIRED', `Bal c/d is written only after ${gate}`, 409);
     }
     const created = await insertLedgerRow(client, {
       tenantId,

@@ -63,6 +63,7 @@ async function resetDatabase() {
       audit_signoffs,
       auditor_branches,
       mock_core_transactions,
+      surprise_assignments,
       surprise_check_books,
       surprise_checks,
       book_narrations,

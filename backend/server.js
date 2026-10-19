@@ -32,6 +32,11 @@ const {
   listSurpriseChecks,
   surpriseSlip,
   printSurpriseSlip,
+  setSurpriseArchived,
+  deleteSurpriseCheck,
+  surpriseAssignmentView,
+  assignSurpriseChecker,
+  withdrawSurpriseAssignment,
 } = require('./services/surprise');
 const { getBookView, insertLedgerRow, amendLedgerRow, writeCarriedDown } = require('./services/ledger');
 const { recordAudit } = require('./services/audit');
@@ -270,6 +275,8 @@ function buildApp(db) {
       can_act_as: isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId,
       can_configure_movements: isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId,
       can_surprise_check: canConductSurprise(req.user),
+      can_assign_surprise: req.user.role === 'BRANCH_ADMINISTRATOR',
+      can_manage_checks: isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId,
       can_audit: req.user.role === 'AUDITOR',
       can_vault_sheet: deskCanPost(req.user),
       acting_as: Boolean(req.user.actorUserId),
@@ -463,14 +470,48 @@ function buildApp(db) {
     res.json({ logo_label: logo, logo_file: logoFile });
   }));
 
+  app.get('/api/brand/mark', guard, asyncRoute(async (req, res) => {
+    const brand = await db.query(
+      `SELECT logo_file FROM bank_tenants WHERE tenant_id = $1`,
+      [req.user.tenantId],
+    );
+    const file = resolveLogo(brand.rows[0] ? brand.rows[0].logo_file : undefined);
+    res.type('png').sendFile(file);
+  }));
+
   app.get('/api/surprise-checks', guard, asyncRoute(async (req, res) => {
     const branchId = await resolveCheckBranch(db, req.user);
     const date = req.query.date;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) {
       throw new VaultError('INVALID_TIME', 'Choose the date the check belongs to');
     }
-    const checks = await listSurpriseChecks(db, req.user.tenantId, branchId, date);
+    const archived = req.query.archived === '1' || req.query.archived === 'true';
+    const checks = await listSurpriseChecks(db, req.user.tenantId, branchId, date, { archived });
     res.json({ checks });
+  }));
+
+  app.get('/api/surprise-assignment', guard, asyncRoute(async (req, res) => {
+    res.json(await surpriseAssignmentView(db, req.user, req.query.date));
+  }));
+
+  app.post('/api/surprise-assignment', guard, asyncRoute(async (req, res) => {
+    res.status(201).json(await assignSurpriseChecker(db, req.user, req.body || {}));
+  }));
+
+  app.delete('/api/surprise-assignment', guard, asyncRoute(async (req, res) => {
+    res.json(await withdrawSurpriseAssignment(db, req.user, req.query.date || (req.body && req.body.business_date)));
+  }));
+
+  app.post('/api/surprise-checks/:checkId/archive', guard, asyncRoute(async (req, res) => {
+    res.json(await setSurpriseArchived(db, req.user, req.params.checkId, true));
+  }));
+
+  app.post('/api/surprise-checks/:checkId/restore', guard, asyncRoute(async (req, res) => {
+    res.json(await setSurpriseArchived(db, req.user, req.params.checkId, false));
+  }));
+
+  app.delete('/api/surprise-checks/:checkId', guard, asyncRoute(async (req, res) => {
+    res.json(await deleteSurpriseCheck(db, req.user, req.params.checkId));
   }));
 
   app.post('/api/surprise-checks', guard, asyncRoute(async (req, res) => {

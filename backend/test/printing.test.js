@@ -104,8 +104,6 @@ function assertLandscape(buffer) {
 function assertLogo(buffer) {
   const raw = buffer.toString('latin1');
   assert.match(raw, /\/Subtype\s*\/Image/);
-  assert.match(raw, /\/Width 168/);
-  assert.match(raw, /\/Height 168/);
   assert.match(raw, /\/BaseFont\s*\/Helvetica-Bold/);
 }
 
@@ -211,9 +209,9 @@ test('closing, takeover, surprise, audit, and vault sheets are A4 with the right
       ],
       books: [{
         book_class: 'KWACHA_TREASURY',
-        system_totals: [{ figure: '1,656,515.00' }],
-        counted_totals: [{ figure: '1,656,515.00' }],
-        narration_text: 'Surprise cash check was done and found to be correct as "1,656,515.00".',
+        system_totals: [{ figure: 'ZMW 1,656,515.00' }],
+        counted_totals: [{ figure: 'ZMW 1,656,515.00' }],
+        narration_text: 'Surprise cash check was done and found to be correct as "ZMW 1,656,515.00".',
       }],
     },
   });
@@ -222,6 +220,7 @@ test('closing, takeover, surprise, audit, and vault sheets are A4 with the right
   const surpriseText = pdfText(surprise);
   assert.match(surpriseText, /Branch Auditor/);
   assert.match(surpriseText, /AUD-0012/);
+  assert.match(surpriseText, /ZMW 1,656,515\.00/);
   assert.match(surpriseText, /Custodians present/);
   assert.equal(surpriseText.split('Signature').length - 1, 1);
 
@@ -563,7 +562,7 @@ test('a vault sheet posts only non-zero books and a reprint does not post again'
      WHERE line_reference = $1 ORDER BY matrix_tx_id`,
     [`VS-${failed.sheet_id}`],
   );
-  assert.deepEqual(labels.rows.map((row) => row.accounting_label), ['Out Vault', 'Out Vault']);
+  assert.deepEqual(labels.rows.map((row) => row.accounting_label), ['Out', 'Out']);
   assert.deepEqual(labels.rows.map((row) => row.flow_direction), ['OUT', 'OUT']);
 
   const again = await reprintVaultSheet(applicationPool, actor, failed.sheet_id, {

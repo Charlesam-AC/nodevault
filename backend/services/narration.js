@@ -12,18 +12,19 @@ function grouped(minor) {
   return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${frac}`;
 }
 
-function figureText(currency, minor) {
+function figureText(currency, minor, options = {}) {
   const body = grouped(minor);
-  return currency === 'ZMW' ? body : `${currency} ${body}`;
+  if (currency === 'ZMW') return options.kwachaCode ? `ZMW ${body}` : body;
+  return `${currency} ${body}`;
 }
 
-function figuresFromMinors(bookClass, minors) {
+function figuresFromMinors(bookClass, minors, options = {}) {
   return currenciesFor(bookClass).map((currency) => {
     const minor = BigInt(minors[currency] || 0);
     return {
       currency,
       minor: minor.toString(),
-      figure: figureText(currency, minor),
+      figure: figureText(currency, minor, options),
       words: amountInWords(minor, currency),
     };
   });
@@ -78,7 +79,7 @@ function surpriseSentence({ figures, differences, checker, at }) {
   return `Surprise cash check was done and ${finding} by "${who}" on "${when}". All pages checks correctly and intact. "${who}".`;
 }
 
-function compareFigures(systemFigures, countedFigures) {
+function compareFigures(systemFigures, countedFigures, options = {}) {
   const differences = [];
   systemFigures.forEach((system, index) => {
     const counted = countedFigures[index];
@@ -90,7 +91,7 @@ function compareFigures(systemFigures, countedFigures) {
       currency: system.currency,
       direction: countedMinor < systemMinor ? 'short' : 'over',
       minor: gap.toString(),
-      figure: figureText(system.currency, gap),
+      figure: figureText(system.currency, gap, options),
       words: amountInWords(gap, system.currency),
     });
   });

@@ -20,7 +20,7 @@ CREATE TABLE bank_tenants (
   corporate_domain VARCHAR(100) NOT NULL UNIQUE,
   logo_label VARCHAR(40) NOT NULL DEFAULT '',
   -- Print-only image. The desk never draws this file.
-  logo_file VARCHAR(120) NOT NULL DEFAULT 'fnb-logo-placeholder.png',
+  logo_file VARCHAR(120) NOT NULL DEFAULT 'fnb-acacia.png',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -127,7 +127,8 @@ CREATE TABLE handover_logs (
   FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id)
 );
 
--- In or Out choices. Bal c/d is allowed only after the option flagged carries_down (In Vault).
+-- In or Out choices. A new bank starts with In, Out, CIT In, and CIT Out.
+-- Bal c/d can be written on an open book without an In line first.
 CREATE TABLE movement_options (
   option_id SERIAL PRIMARY KEY,
   tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
@@ -172,8 +173,24 @@ CREATE TABLE surprise_checks (
   checker_role VARCHAR(40) NOT NULL,
   custodians_present JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  archived_at TIMESTAMPTZ,
   FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id),
   FOREIGN KEY (tenant_id, checker_user_id) REFERENCES nodevault_users (tenant_id, user_id)
+);
+
+-- Who counts the vault on one open date. Not a ledger line.
+CREATE TABLE surprise_assignments (
+  assignment_id BIGSERIAL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES bank_tenants (tenant_id),
+  branch_id INT NOT NULL,
+  business_date DATE NOT NULL,
+  assignee_user_id INT NOT NULL,
+  assigned_by_user_id INT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, branch_id, business_date),
+  FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, branch_id),
+  FOREIGN KEY (tenant_id, assignee_user_id) REFERENCES nodevault_users (tenant_id, user_id),
+  FOREIGN KEY (tenant_id, assigned_by_user_id) REFERENCES nodevault_users (tenant_id, user_id)
 );
 
 CREATE TABLE post_assignments (
@@ -593,15 +610,55 @@ BEFORE UPDATE OR DELETE ON book_narrations
 FOR EACH ROW
 EXECUTE FUNCTION nodevault_reject_narration_mutation();
 
-CREATE TRIGGER surprise_checks_append_only
+CREATE OR REPLACE FUNCTION nodevault_guard_surprise_check()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  IF NEW.check_id IS DISTINCT FROM OLD.check_id
+    OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+    OR NEW.branch_id IS DISTINCT FROM OLD.branch_id
+    OR NEW.business_date IS DISTINCT FROM OLD.business_date
+    OR NEW.checked_at IS DISTINCT FROM OLD.checked_at
+    OR NEW.checker_user_id IS DISTINCT FROM OLD.checker_user_id
+    OR NEW.checker_name IS DISTINCT FROM OLD.checker_name
+    OR NEW.checker_employee_id IS DISTINCT FROM OLD.checker_employee_id
+    OR NEW.checker_role IS DISTINCT FROM OLD.checker_role
+    OR NEW.custodians_present IS DISTINCT FROM OLD.custodians_present
+    OR NEW.created_at IS DISTINCT FROM OLD.created_at
+  THEN
+    RAISE EXCEPTION 'a surprise check can only be archived or deleted';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER surprise_checks_archive_only
 BEFORE UPDATE OR DELETE ON surprise_checks
 FOR EACH ROW
-EXECUTE FUNCTION nodevault_reject_narration_mutation();
+EXECUTE FUNCTION nodevault_guard_surprise_check();
 
-CREATE TRIGGER surprise_check_books_append_only
+CREATE OR REPLACE FUNCTION nodevault_reject_surprise_book_update()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RAISE EXCEPTION 'surprise check book rows are not rewritten';
+END;
+$$;
+
+CREATE TRIGGER surprise_check_books_no_rewrite
 BEFORE UPDATE OR DELETE ON surprise_check_books
 FOR EACH ROW
-EXECUTE FUNCTION nodevault_reject_narration_mutation();
+EXECUTE FUNCTION nodevault_reject_surprise_book_update();
 
 CREATE OR REPLACE FUNCTION nodevault_reject_calendar_mutation()
 RETURNS trigger
@@ -927,7 +984,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nodevault_app;
 
 GRANT SELECT, INSERT ON bank_tenants, branches, nodevault_users, desk_roles, system_control,
   weekly_coordinator_assignments, rotation_schedules, handover_logs, post_assignments,
-  movement_options, book_narrations, surprise_checks, surprise_check_books,
+  movement_options, book_narrations, surprise_checks, surprise_check_books, surprise_assignments,
   non_working_closures, non_working_closure_branches, non_working_closure_cancellations,
   gazetted_holidays, gazetted_holiday_cancellations,
   carry_forward_flags, branch_vault_books, vault_denomination_matrix_ledger,
@@ -972,8 +1029,13 @@ REVOKE DELETE, TRUNCATE ON branch_vault_books FROM nodevault_app;
 REVOKE DELETE, TRUNCATE ON audit_events FROM nodevault_app;
 REVOKE UPDATE, DELETE, TRUNCATE ON handover_logs FROM nodevault_app;
 REVOKE UPDATE, DELETE, TRUNCATE ON book_narrations FROM nodevault_app;
-REVOKE UPDATE, DELETE, TRUNCATE ON surprise_checks FROM nodevault_app;
-REVOKE UPDATE, DELETE, TRUNCATE ON surprise_check_books FROM nodevault_app;
+GRANT UPDATE (archived_at) ON surprise_checks TO nodevault_app;
+GRANT DELETE ON surprise_checks TO nodevault_app;
+GRANT DELETE ON surprise_check_books TO nodevault_app;
+GRANT UPDATE (assignee_user_id, assigned_by_user_id, created_at) ON surprise_assignments TO nodevault_app;
+GRANT DELETE ON surprise_assignments TO nodevault_app;
+REVOKE TRUNCATE ON surprise_checks FROM nodevault_app;
+REVOKE UPDATE, TRUNCATE ON surprise_check_books FROM nodevault_app;
 REVOKE UPDATE, DELETE, TRUNCATE ON non_working_closures FROM nodevault_app;
 REVOKE UPDATE, DELETE, TRUNCATE ON non_working_closure_branches FROM nodevault_app;
 REVOKE UPDATE, DELETE, TRUNCATE ON non_working_closure_cancellations FROM nodevault_app;

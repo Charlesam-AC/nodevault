@@ -262,7 +262,7 @@ test('an auditor cannot post a book line', async () => {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ accounting_label: 'In Vault', flow_direction: 'IN', amounts: {} }),
+      body: JSON.stringify({ accounting_label: 'In', flow_direction: 'IN', amounts: {} }),
     });
     const body = await response.json();
     assert.equal(response.status, 403);

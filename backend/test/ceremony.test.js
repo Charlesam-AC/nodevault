@@ -250,7 +250,7 @@ test('a surprise cash check matches or names the difference without moving a bal
   assert.equal(kwacha.matched, true);
   assert.equal(
     kwacha.narration_text,
-    `Surprise cash check was done and found to be correct as "1,656,515.00" "(one million six hundred and fifty-six thousand five hundred and fifteen kwacha and zero ngwee)" by "${who}" on "03/10/2026 14:30". All pages checks correctly and intact. "${who}".`,
+    `Surprise cash check was done and found to be correct as "ZMW 1,656,515.00" "(one million six hundred and fifty-six thousand five hundred and fifteen kwacha and zero ngwee)" by "${who}" on "03/10/2026 14:30". All pages checks correctly and intact. "${who}".`,
   );
   const foreign = matched.books.find((book) => book.book_class === 'FOREIGN_CURRENCY');
   assert.equal(
@@ -285,7 +285,7 @@ test('a surprise cash check matches or names the difference without moving a bal
     foreignDiff.narration_text,
     `Surprise cash check was done and found to be over by "USD 100.00" "(one hundred dollars)" by "${who}" on "${late}". All pages checks correctly and intact. "${who}".`,
   );
-  assert.match(kwachaStill.narration_text, /found to be correct as "1,656,515.00"/);
+  assert.match(kwachaStill.narration_text, /found to be correct as "ZMW 1,656,515.00"/);
   assert.deepEqual(await ledgerFingerprint(applicationPool), before);
 
   const evening = await recordSurpriseCheck(applicationPool, checker, {
@@ -308,14 +308,14 @@ test('a surprise cash check matches or names the difference without moving a bal
   );
 });
 
-test('In or Out options are configurable and Bal c/d follows In Vault', async () => {
+test('In or Out is In, Out, CIT In, and CIT Out, and Bal c/d does not wait for In Vault', async () => {
   const { applicationPool } = pools();
   const desk = await createDesk(pinHash);
   const options = await listMovementOptions(applicationPool, desk.tenantId);
-  assert.deepEqual(options.map((option) => option.label), [
-    'Out ATM', 'In ATM', 'In CIT', 'Out CIT', 'Out Vault', 'In Vault',
+  assert.deepEqual(options.filter((option) => option.is_active).map((option) => option.label), [
+    'In', 'Out', 'CIT In', 'CIT Out',
   ]);
-  assert.equal(options.find((option) => option.label === 'In Vault').carries_down, true);
+  assert.equal(options.some((option) => option.label === 'Out ATM' && option.is_active), false);
 
   const admin = { email: 'admin@demo-bank.example', tenantId: desk.tenantId, actorUserId: null };
   const added = await addMovementOption(applicationPool, admin, {
@@ -333,9 +333,8 @@ test('In or Out options are configurable and Bal c/d follows In Vault', async ()
   assert.equal(deskSource.includes("textContent = option.is_active ? 'Retire' : 'Restore'"), false);
 
   await applicationPool.query(
-    `UPDATE movement_options
-     SET label = 'Out ATM Kitwe', is_active = false
-     WHERE tenant_id = $1 AND label = 'Out ATM'`,
+    `INSERT INTO movement_options (tenant_id, label, flow_direction, carries_down, sort_order, is_active)
+     VALUES ($1, 'Out ATM', 'OUT', false, 1, true)`,
     [desk.tenantId],
   );
   const renamedBook = await createBookWithRows(applicationPool, {
@@ -353,19 +352,19 @@ test('In or Out options are configurable and Bal c/d follows In Vault', async ()
     custodianOneInitials: 'C.A.',
     custodianTwoInitials: 'J.P.',
     tellerCoordInitials: 'M.K.',
-    accountingLabel: 'Out ATM Kitwe',
+    accountingLabel: 'Out ATM',
     flowDirection: 'OUT',
     amounts: { REISSUABLE: { K10: '10.00' } },
   });
   const healed = await listMovementOptions(applicationPool, desk.tenantId);
-  assert.deepEqual(healed.filter((option) => option.sort_order <= 6).map((option) => option.label), [
-    'Out ATM', 'In ATM', 'In CIT', 'Out CIT', 'Out Vault', 'In Vault',
+  assert.deepEqual(healed.filter((option) => option.is_active).map((option) => option.label), [
+    'In', 'Out', 'CIT In', 'CIT Out', 'In Night Safe',
   ]);
-  assert.equal(healed.find((option) => option.label === 'Out ATM').is_active, true);
-  assert.equal(healed.some((option) => option.label === 'In Night Safe'), true);
+  assert.equal(healed.find((option) => option.label === 'Out ATM').is_active, false);
+  assert.ok(healed.find((option) => option.label === 'In Night Safe').sort_order > 4);
   const kept = await applicationPool.query(
     `SELECT accounting_label FROM vault_denomination_matrix_ledger
-     WHERE book_id = $1 AND accounting_label = 'Out ATM Kitwe'`,
+     WHERE book_id = $1 AND accounting_label = 'Out ATM'`,
     [renamedBook],
   );
   assert.equal(kept.rowCount, 1);
@@ -393,33 +392,10 @@ test('In or Out options are configurable and Bal c/d follows In Vault', async ()
     custodianTwoInitials: 'J.P.',
     tellerCoordInitials: 'M.K.',
   };
-  await assert.rejects(
-    () => writeCarriedDown(applicationPool, initials),
-    (error) => error instanceof VaultError && error.code === 'IN_VAULT_REQUIRED',
-  );
-  await insertLedgerRow(applicationPool, {
-    ...initials,
-    transactionDate: '2026-10-06',
-    accountingLabel: 'Out ATM',
-    flowDirection: 'OUT',
-    amounts: { REISSUABLE: { K10: '10.00' } },
-  });
-  await assert.rejects(
-    () => writeCarriedDown(applicationPool, initials),
-    (error) => error instanceof VaultError && error.code === 'IN_VAULT_REQUIRED',
-  );
-  await insertLedgerRow(applicationPool, {
-    ...initials,
-    transactionDate: '2026-10-06',
-    accountingLabel: 'In Vault',
-    flowDirection: 'IN',
-    amounts: { REISSUABLE: { K10: '10.00' } },
-  });
   const squared = await writeCarriedDown(applicationPool, initials);
   const view = await getBookView(applicationPool, desk.tenantId, bookId);
   assert.equal(view.rows.at(-1).accounting_label, 'Bal c/d');
   assert.equal(view.rows.at(-1).line_number, squared.lineNumber);
-  assert.equal(view.rows.some((row) => row.in_or_out === 'Out ATM'), true);
-  assert.equal(view.rows.some((row) => row.in_or_out === 'In Vault'), true);
+  assert.equal(view.rows.some((row) => row.accounting_label === 'In Vault'), false);
   assert.equal(view.rows[0].in_or_out, 'Bal b/f');
 });
