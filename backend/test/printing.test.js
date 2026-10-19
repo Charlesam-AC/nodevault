@@ -166,7 +166,7 @@ test('closing, takeover, surprise, audit, and vault sheets are A4 with the right
   const takeover = await renderTakeoverSlip({
     logoFile: 'fnb-logo-placeholder.png',
     slip: {
-      bank_name: 'Desk Bank',
+      bank_name: 'FNB Zambia Limited',
       branch_name: 'Main Branch',
       taken_over_at: '05/10/2026 08:00',
       handing_over: [
@@ -198,7 +198,7 @@ test('closing, takeover, surprise, audit, and vault sheets are A4 with the right
   const surprise = await renderSurpriseSlip({
     logoFile: 'fnb-logo-placeholder.png',
     slip: {
-      bank_name: 'Desk Bank',
+      bank_name: 'FNB Zambia Limited',
       branch_name: 'Main Branch',
       checked_at_display: '03/10/2026 14:30',
       checker_name: 'Branch Auditor',
@@ -221,13 +221,14 @@ test('closing, takeover, surprise, audit, and vault sheets are A4 with the right
   assert.match(surpriseText, /Branch Auditor/);
   assert.match(surpriseText, /AUD-0012/);
   assert.match(surpriseText, /ZMW 1,656,515\.00/);
+  assert.match(surpriseText, /FNB Zambia Limited/);
   assert.match(surpriseText, /Custodians present/);
   assert.equal(surpriseText.split('Signature').length - 1, 1);
 
   const audit = await renderAuditSheet({
     logoFile: 'fnb-logo-placeholder.png',
     review: {
-      bank_name: 'Desk Bank',
+      bank_name: 'FNB Zambia Limited',
       branch_name: 'Main Branch',
       range_from_display: '03/10/2026',
       range_to_display: '03/10/2026',
@@ -273,7 +274,7 @@ test('closing, takeover, surprise, audit, and vault sheets are A4 with the right
     logoFile: 'fnb-logo-placeholder.png',
     sheet: {
       direction: 'FROM_VAULT',
-      bank_name: 'Desk Bank',
+      bank_name: 'FNB Zambia Limited',
       branch_name: 'Main Branch',
       generated_at_display: '03/10/2026 09:00',
       amounts: {
@@ -361,7 +362,7 @@ test('raw and IPP jobs send the PDF bytes to the branch target', async () => {
     logoFile: 'fnb-logo-placeholder.png',
     sheet: {
       direction: 'TO_VAULT',
-      bank_name: 'Desk Bank',
+      bank_name: 'FNB Zambia Limited',
       branch_name: 'Main Branch',
       generated_at_display: '03/10/2026 09:00',
       amounts: { KWACHA_TREASURY: {}, FOREIGN_CURRENCY: {}, BANCS_TREASURY: {} },

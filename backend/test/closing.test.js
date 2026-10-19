@@ -93,6 +93,7 @@ test('closes each of the three books on a zero-variance match', async () => {
     'custodian.two@demo-bank.example',
   ].sort());
   assert.ok(mailed[0].cc.includes('rom@demo-bank.example'));
+  assert.match(mailed[0].text, /NODEVAULT CLOSING SHEET\nFNB Zambia Limited\n/);
   for (const bookId of Object.values(desk.books)) {
     assert.equal(await statusOf(bookId), 'BALANCED_CLOSED');
   }

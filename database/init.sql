@@ -1001,7 +1001,7 @@ GRANT UPDATE (
 GRANT UPDATE (display_name) ON desk_roles TO nodevault_app;
 GRANT DELETE ON desk_roles TO nodevault_app;
 GRANT UPDATE (period_end) ON post_assignments TO nodevault_app;
-GRANT UPDATE (logo_label, logo_file) ON bank_tenants TO nodevault_app;
+GRANT UPDATE (bank_name, logo_label, logo_file) ON bank_tenants TO nodevault_app;
 GRANT UPDATE (label, flow_direction, sort_order, is_active) ON movement_options TO nodevault_app;
 GRANT UPDATE (branch_code, branch_name, province, location_name, is_active, permanently_closed, printer_target) ON branches TO nodevault_app;
 GRANT UPDATE (pending_final_comment_at) ON auditor_branches TO nodevault_app;

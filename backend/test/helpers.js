@@ -115,7 +115,7 @@ async function createDesk(pinHash, options = {}) {
   const db = applicationPool;
   const tenant = await db.query(
     `INSERT INTO bank_tenants (bank_name, corporate_domain, logo_label)
-     VALUES ('Desk Bank', 'demo-bank.example', 'FNB') RETURNING tenant_id`,
+     VALUES ('FNB Zambia Limited', 'demo-bank.example', 'FNB') RETURNING tenant_id`,
   );
   const tenantId = tenant.rows[0].tenant_id;
   const branch = await db.query(

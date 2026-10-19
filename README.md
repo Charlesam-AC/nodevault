@@ -1,6 +1,8 @@
 # NodeVault
 
-Paperless treasury and vault balance engine for commercial banks. One deployment can be white-labelled per bank. Each branch keeps exactly three books: the Kwacha Treasury Book, the Foreign Currency Treasury Book, and the Bancs Treasury Book.
+Source: [github.com/Charlesam-AC/nodevault](https://github.com/Charlesam-AC/nodevault)
+
+Paperless treasury and vault balance engine for commercial banks. One deployment can be white-labelled per bank. Each branch keeps exactly three books: the Kwacha Treasury Book, the Foreign Currency Treasury Book, and the Bancs Treasury Book. The demo tenant is **FNB Zambia Limited**, stored on `bank_tenants.bank_name`. The header BANK field, printed pages, slips, and the closing email read that column.
 
 Charles Amulike. Specification v1.0.4. Column layouts follow the photographed paper books (v1.0.9 was the starting draft, not the finished behaviour).
 
@@ -232,6 +234,6 @@ backend/services/print.js
 backend/services/printJobs.js
 backend/services/auditReview.js
 backend/services/vaultSheets.js
-backend/assets/logos/    print-only tenant logo, including the FNB placeholder
+backend/assets/logos/    print-only tenant logo, the FNB acacia mark
 backend/public/          ledger desk, including the font-scaling rule
 ```

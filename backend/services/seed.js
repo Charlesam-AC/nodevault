@@ -40,7 +40,7 @@ async function seedDemo(db) {
 
   const tenant = await db.query(
     `INSERT INTO bank_tenants (bank_name, corporate_domain, logo_label)
-     VALUES ('Demo Commercial Bank', 'demo-bank.example', 'FNB')
+     VALUES ('FNB Zambia Limited', 'demo-bank.example', 'FNB')
      RETURNING tenant_id`,
   );
   const tenantId = tenant.rows[0].tenant_id;
@@ -162,7 +162,7 @@ async function seedDemo(db) {
 
 async function ensureCeremony(db) {
   const tenants = await db.query(
-    `SELECT tenant_id, corporate_domain, logo_label FROM bank_tenants`,
+    `SELECT tenant_id, corporate_domain, logo_label, bank_name FROM bank_tenants`,
   );
   for (const tenant of tenants.rows) {
     await ensureMovementOptions(db, tenant.tenant_id);
@@ -172,6 +172,12 @@ async function ensureCeremony(db) {
        WHERE tenant_id = $1 AND logo_file = 'fnb-logo-placeholder.png'`,
       [tenant.tenant_id],
     );
+    if (tenant.corporate_domain === 'demo-bank.example' && tenant.bank_name === 'Demo Commercial Bank') {
+      await db.query(
+        `UPDATE bank_tenants SET bank_name = 'FNB Zambia Limited' WHERE tenant_id = $1`,
+        [tenant.tenant_id],
+      );
+    }
     if (!tenant.logo_label && tenant.corporate_domain === 'demo-bank.example') {
       await db.query(
         `UPDATE bank_tenants SET logo_label = 'FNB' WHERE tenant_id = $1`,

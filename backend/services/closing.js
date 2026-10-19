@@ -30,9 +30,10 @@ async function pinMatches(pin, hash) {
   return bcrypt.compare(pin, hash);
 }
 
-function buildSheet({ layout, operatingDate, branchName, position, signatories }) {
+function buildSheet({ layout, operatingDate, branchName, bankName, position, signatories }) {
   const lines = [
     'NODEVAULT CLOSING SHEET',
+    bankName,
     layout.title,
     `${branchName}    ${formatDisplayDate(operatingDate)}`,
     layout.formula,
@@ -207,6 +208,7 @@ async function lockBook(client, tenantId, branchId, closingPayload, deps) {
     layout,
     operatingDate,
     branchName: book.branch_name,
+    bankName: book.bank_name,
     position: ledgerPosition,
     signatories,
   });

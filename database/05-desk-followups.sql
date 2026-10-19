@@ -84,3 +84,9 @@ ALTER TABLE bank_tenants ALTER COLUMN logo_file SET DEFAULT 'fnb-acacia.png';
 UPDATE bank_tenants
 SET logo_file = 'fnb-acacia.png'
 WHERE logo_file = 'fnb-logo-placeholder.png';
+
+GRANT UPDATE (bank_name) ON bank_tenants TO nodevault_app;
+UPDATE bank_tenants
+SET bank_name = 'FNB Zambia Limited'
+WHERE corporate_domain = 'demo-bank.example'
+  AND bank_name = 'Demo Commercial Bank';
