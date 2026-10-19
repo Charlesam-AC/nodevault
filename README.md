@@ -42,13 +42,19 @@ When that handover commits both custodian seats, the desk writes one takeover na
 
 ## Surprise cash check
 
-An auditor or the regional operations manager can record a surprise cash check on any day, at any time, against an open book or a book that is already `BALANCED_CLOSED`. The master admin can record one only while not acting as someone else, so the desk can be demonstrated. A vault custodian, the head teller, a teller, and a branch manager cannot: the count has to come from someone who is not holding the cash. The check is stored on its own. It is not a ledger movement, and Bal b/f, Bal b/d, and Bal c/d stay as they were.
+An auditor, the regional operations manager, or the master admin (while not acting as someone else) can record a surprise cash check on any day, at any time, against an open book or a book that is already `BALANCED_CLOSED`. A branch administrator can assign someone else, who is not a custodian on duty and not the IT super admin, to count on the date open on the desk. Assigning again replaces that name. Withdraw assignment clears the date. A branch manager cannot assign. While the master admin is acting as someone else, the desk follows that person's rights. The assigned person records the count, and the slip uses their name and employee ID. The assignment is not a ledger line.
+
+The check form follows the books. Kwacha, foreign currency, and Bancs show their denominations in book order, including USD 2. Each box starts at the amount sitting in the book, and that amount is printed under the box. The line under the book compares the book total with the vault total, which is the sum of the boxes. Kwacha on the open book still reads K1,656,515.00 when the count matches. On the check itself, Kwacha reads **ZMW 1,656,515.00** for the book position, the counted total, and the sentence. The amount in words is unchanged. Foreign amounts stay EUR, GBP, USD, and ZAR.
+
+The card lists the time, the checker, and whether every book matches. Each book is one line: title, Correct or Difference, and the figures. The full sentence stays on the slip. A master admin who is not acting as someone else can archive a check or delete it. Archive hides it from the current list; Restore brings it back. Delete asks “Delete this check? The slip goes with it.” and removes the check and its book rows. An auditor or a custodian cannot do either. Neither action changes Bal b/f, Bal b/d, or Bal c/d.
+
+The check is stored on its own. It is not a ledger movement, and Bal b/f, Bal b/d, and Bal c/d stay as they were.
 
 The record keeps the checker's full legal name, employee ID, role, and the date and time, the custodians on duty (named as present; they do not sign), and each book's system position beside the counted total. A match uses the correct-as sentence. A difference uses the same sentence and says short by or over by, currency by currency, each amount in words. The printed slip is A4 portrait. It carries the tenant logo image and one signature line, for the checker. Custodians are named as present and have no signature line. A printer failure does not remove the check. The auditor's review lists the check on the Lusaka date it happened, not on the next morning.
 
 ## In or Out
 
-The master admin can add an In or Out option. A new bank starts with Out ATM, In ATM, In CIT, Out CIT, Out Vault, and In Vault, and those six keep those names. In Vault stays, because Bal c/d is written only on the line after In Vault. Bal b/f, Bal b/d, and Bal c/d remain the balance labels and are not options in that list.
+The master admin can add an In or Out option. A new bank starts with **In**, **Out**, **CIT In**, and **CIT Out**, in that order. Choosing one fills the reference. A reference typed by hand stays when the choice changes. The earlier ATM and vault names are turned off, and lines already on the books keep the words they were written with. Bal c/d can be written on an open book without an In Vault line first. A new option appears after those four. Bal b/f, Bal b/d, and Bal c/d remain the balance labels and are not options in that list.
 
 Saturday 3 October 2026 is a trading day. The photographed sample is locked on that date and is the Bal c/d Monday 5 October brings forward. Friday 2 October 2026 is also locked, which is what a Saturday morning would roll forward. The Saturday book is the sample itself, so the morning job does not insert a second Bal b/f on top of it. The desk shows that Saturday book while Saturday is the business morning.
 
@@ -66,7 +72,7 @@ Money is integer minor units (1/100) from the page through PostgreSQL `BIGINT`. 
 
 Every printed document goes to a normal A4 office printer from the API process. The desk does not open a browser print dialog, and it does not draw the bank logo. An admin sets `printer_target` on each branch (host, host:port, or an IPP URL). There is no global printer name. `PRINTER_MODE=stub` writes the PDF under `PRINT_STUB_DIR` (default `/tmp/nodevault-prints`) and still requires that branch target. `raw` sends the PDF to port 9100. `ipp` sends an IPP Print-Job. `network` remains the older HTTP POST to `PRINTER_URL`.
 
-The logo is a PNG named on the tenant (`logo_file`, default `fnb-logo-placeholder.png` in `backend/assets/logos`). The placeholder is marked as a placeholder. The master admin can swap the file name from the desk; the file has to sit in that folder. Totals are bold. Each signature is a blank line, then the word Signature, then the person's name and employee ID.
+The logo is a PNG named on the tenant (`logo_file`, default `fnb-acacia.png` in `backend/assets/logos`). That file is FNB’s acacia mark, the teal and orange disc from the FNB Zambia header. It is drawn on every printed page and on the takeover and surprise slips. It is not drawn on the sign-in screen, the live books, or the entry forms. The master admin can swap the file name from the desk; the file has to sit in that folder. Totals are bold. Each signature is a blank line, then the word Signature, then the person's name and employee ID.
 
 | Document | Page | Who signs |
 | --- | --- | --- |
@@ -80,7 +86,7 @@ The closing sheet is the only document that is also emailed. The subject stays `
 
 Printed denomination grids omit the USD 2 column and any old Kwacha currency column. A USD 2 amount that is still on the book is kept inside TOTAL USD, so the printed total still matches the book. The on-screen foreign and Bancs sheets still show the USD 2 column. Kwacha prints TOTAL TREASURY (re-issuable notes plus coins). Coin codes print as N50, N10, and N5.
 
-From Vault posts one Out Vault line on each book whose typed total is not zero, labelled Out Vault. To Vault posts In Vault. A zero book is printed at zero and gets no book line. The sheet says it was generated before the vault was opened. If the printer fails, the lines stay and `printed_at` stays empty until a reprint succeeds.
+From Vault posts one Out line on each book whose typed total is not zero. To Vault posts In. A zero book is printed at zero and gets no book line. The sheet says it was generated before the vault was opened. If the printer fails, the lines stay and `printed_at` stays empty until a reprint succeeds.
 
 ## Auditor review
 
@@ -100,7 +106,7 @@ docker compose up --build
 
 The API and the desk are at [http://127.0.0.1:8080](http://127.0.0.1:8080). Postgres is published on port 54329 for the test suite. `docker compose up` is healthy when both `nodevault-api` and `nodevault-db` report healthy.
 
-A volume created before directory passwords existed does not have `password_hash`. A volume created before non-working days does not have the closure tables. Recreate it with `docker compose down -v && docker compose up --build`, or apply `database/03-working-calendar.sql` and then `database/04-printing.sql` on the existing database. The printing file adds the branch printer, the logo file, auditor assignments, vault sheets, and print jobs.
+A volume created before directory passwords existed does not have `password_hash`. A volume created before non-working days does not have the closure tables. Recreate it with `docker compose down -v && docker compose up --build`, or apply `database/03-working-calendar.sql` and then `database/04-printing.sql` on the existing database. The printing file adds the branch printer, the logo file, auditor assignments, vault sheets, and print jobs. `database/05-desk-followups.sql` adds surprise-check archive and assignment on a database created before those columns.
 
 Demo sign-in (only when `SEED_DEMO_DATA=true`):
 

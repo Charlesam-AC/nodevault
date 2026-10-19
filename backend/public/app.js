@@ -12,6 +12,7 @@ const state = {
   dates: [],
   amendingLine: null,
   sheetPage: 1,
+  surpriseArchived: false,
 };
 
 const loginView = document.getElementById('login-view');
@@ -1018,15 +1019,39 @@ function signatureBlock(caption, people) {
   for (const person of people) {
     const row = document.createElement('p');
     row.className = 'slip-sign';
-    const name = document.createElement('span');
-    name.textContent = personLine(person);
     const line = document.createElement('span');
     line.className = 'sig-line';
     line.textContent = 'Signature';
-    row.append(name, line);
+    const name = document.createElement('span');
+    name.className = 'sig-name';
+    name.textContent = personLine(person);
+    row.append(line, name);
     block.appendChild(row);
   }
   return block;
+}
+
+async function slipMark() {
+  const img = document.createElement('img');
+  img.className = 'slip-mark';
+  img.alt = '';
+  try {
+    const response = await fetch('/api/brand/mark', {
+      headers: state.token ? { Authorization: `Bearer ${state.token}` } : {},
+    });
+    if (!response.ok) return img;
+    const blob = await response.blob();
+    img.src = URL.createObjectURL(blob);
+  } catch (_error) {
+    img.hidden = true;
+  }
+  return img;
+}
+
+function bookSlipTitle(bookClass) {
+  if (bookClass === 'KWACHA_TREASURY') return 'Kwacha Treasury Book';
+  if (bookClass === 'FOREIGN_CURRENCY') return 'Foreign Currency Treasury Book';
+  return 'Bancs Treasury Book';
 }
 
 function showSlip(dialogId, bodyId, node) {
@@ -1049,23 +1074,21 @@ async function sendSlipToPrinter(printPath) {
   }
 }
 
-function showTakeoverSlip(slip) {
+async function showTakeoverSlip(slip) {
   document.getElementById('takeover-slip').dataset.printPath = `/api/handovers/${slip.handover_id}/slip/print`;
   const root = document.createElement('div');
+  root.className = 'slip-doc';
   root.append(
+    await slipMark(),
     paragraph(slip.bank_name, 'slip-bank'),
     paragraph(`${slip.branch_name} · ${slip.branch_code}`, 'slip-branch'),
-    paragraph(`Takeover ${slip.taken_over_at}`, 'slip-when'),
+    paragraph(slip.taken_over_at, 'slip-when'),
   );
   for (const book of slip.books) {
     const block = document.createElement('section');
     block.className = 'slip-book';
     const title = document.createElement('h3');
-    title.textContent = book.book_class === 'KWACHA_TREASURY'
-      ? 'Kwacha Treasury Book'
-      : book.book_class === 'FOREIGN_CURRENCY'
-        ? 'Foreign Currency Treasury Book'
-        : 'Bancs Treasury Book';
+    title.textContent = bookSlipTitle(book.book_class);
     block.appendChild(title);
     for (const total of book.totals) {
       const figure = document.createElement('p');
@@ -1089,14 +1112,16 @@ async function openTakeoverSlip(handoverId) {
   showTakeoverSlip(await api(`/api/handovers/${handoverId}/slip`));
 }
 
-function showSurpriseSlip(slip) {
+async function showSurpriseSlip(slip) {
   document.getElementById('surprise-slip').dataset.printPath = `/api/surprise-checks/${slip.check_id}/slip/print`;
   const root = document.createElement('div');
+  root.className = 'slip-doc';
   root.append(
+    await slipMark(),
     paragraph(slip.bank_name, 'slip-bank'),
     paragraph(`${slip.branch_name} · ${slip.branch_code}`, 'slip-branch'),
-    paragraph(`Surprise cash check ${slip.checked_at_display}`, 'slip-when'),
-    paragraph(`${slip.checker_name}, ${slip.checker_employee_id} · ${slip.checker_role}`, 'slip-checker'),
+    paragraph(slip.checked_at_display, 'slip-when'),
+    paragraph(`${slip.checker_name}, ${slip.checker_employee_id}`, 'slip-checker'),
   );
   const present = (slip.custodians_present || []).map(personLine);
   root.appendChild(paragraph(
@@ -1109,12 +1134,24 @@ function showSurpriseSlip(slip) {
     const block = document.createElement('section');
     block.className = 'slip-book';
     const title = document.createElement('h3');
-    title.textContent = book.book_class === 'KWACHA_TREASURY'
-      ? 'Kwacha Treasury Book'
-      : book.book_class === 'FOREIGN_CURRENCY'
-        ? 'Foreign Currency Treasury Book'
-        : 'Bancs Treasury Book';
+    title.textContent = bookSlipTitle(book.book_class);
     block.appendChild(title);
+    for (const total of book.system_totals || []) {
+      const figure = document.createElement('p');
+      figure.className = 'slip-total';
+      const strong = document.createElement('strong');
+      strong.textContent = total.figure;
+      figure.appendChild(strong);
+      block.appendChild(figure);
+    }
+    for (const total of book.counted_totals || []) {
+      const figure = document.createElement('p');
+      figure.className = 'slip-total';
+      const strong = document.createElement('strong');
+      strong.textContent = total.figure;
+      figure.appendChild(strong);
+      block.appendChild(figure);
+    }
     block.appendChild(paragraph(book.narration_text, 'slip-narration'));
     root.appendChild(block);
   }
@@ -1171,28 +1208,60 @@ async function openAuditorBranches(user, card) {
   });
   card.appendChild(box);
 }
-
-const VAULT_FIELDS = {
+const VAULT_GROUPS = {
   KWACHA_TREASURY: [
-    ['REISSUABLE', 'K500', 'K500'], ['REISSUABLE', 'K200', 'K200'], ['REISSUABLE', 'K100', 'K100'],
-    ['REISSUABLE', 'K50', 'K50'], ['REISSUABLE', 'K20', 'K20'], ['REISSUABLE', 'K10', 'K10'],
-    ['COINS', 'K5', 'K5'], ['COINS', 'K2', 'K2'], ['COINS', 'K1', 'K1'],
-    ['COINS', '50n', 'N50'], ['COINS', '10n', 'N10'], ['COINS', '5n', 'N5'],
+    ['Kwacha', [
+      ['REISSUABLE', 'K500', 'K500'], ['REISSUABLE', 'K200', 'K200'], ['REISSUABLE', 'K100', 'K100'],
+      ['REISSUABLE', 'K50', 'K50'], ['REISSUABLE', 'K20', 'K20'], ['REISSUABLE', 'K10', 'K10'],
+      ['COINS', 'K5', 'K5'], ['COINS', 'K2', 'K2'], ['COINS', 'K1', 'K1'],
+      ['COINS', '50n', 'N50'], ['COINS', '10n', 'N10'], ['COINS', '5n', 'N5'],
+    ]],
   ],
   FOREIGN_CURRENCY: [
-    ['EUR', '500', 'EUR 500'], ['EUR', '200', 'EUR 200'], ['EUR', '100', 'EUR 100'], ['EUR', '50', 'EUR 50'],
-    ['EUR', '20', 'EUR 20'], ['EUR', '10', 'EUR 10'], ['EUR', '5', 'EUR 5'],
-    ['GBP', '50', 'GBP 50'], ['GBP', '20', 'GBP 20'], ['GBP', '10', 'GBP 10'], ['GBP', '5', 'GBP 5'],
-    ['USD', '100', 'USD 100'], ['USD', '50', 'USD 50'], ['USD', '20', 'USD 20'], ['USD', '10', 'USD 10'],
-    ['USD', '5', 'USD 5'], ['USD', '1', 'USD 1'],
-    ['ZAR', '200', 'ZAR 200'], ['ZAR', '100', 'ZAR 100'], ['ZAR', '50', 'ZAR 50'], ['ZAR', '20', 'ZAR 20'],
-    ['ZAR', '10', 'ZAR 10'],
+    ['EUR', [
+      ['EUR', '500', '500'], ['EUR', '200', '200'], ['EUR', '100', '100'], ['EUR', '50', '50'],
+      ['EUR', '20', '20'], ['EUR', '10', '10'], ['EUR', '5', '5'],
+    ]],
+    ['GBP', [
+      ['GBP', '50', '50'], ['GBP', '20', '20'], ['GBP', '10', '10'], ['GBP', '5', '5'],
+    ]],
+    ['USD', [
+      ['USD', '100', '100'], ['USD', '50', '50'], ['USD', '20', '20'], ['USD', '10', '10'],
+      ['USD', '5', '5'], ['USD', '2', '2'], ['USD', '1', '1'],
+    ]],
+    ['ZAR', [
+      ['ZAR', '200', '200'], ['ZAR', '100', '100'], ['ZAR', '50', '50'], ['ZAR', '20', '20'],
+      ['ZAR', '10', '10'],
+    ]],
   ],
 };
 
 function holderId(postCode) {
   const post = (state.rotation && state.rotation.posts || []).find((item) => item.postCode === postCode);
   return post && post.current && !post.current.unassigned ? post.current.userId : '';
+}
+
+function amountCents(value) {
+  const text = String(value || '0').trim().replace(/,/g, '');
+  if (!text) return 0n;
+  const negative = text.startsWith('-');
+  const [whole, frac = ''] = text.replace('-', '').split('.');
+  const minor = BigInt(whole || '0') * 100n + BigInt((`${frac}00`).slice(0, 2) || '0');
+  return negative ? -minor : minor;
+}
+
+function centsToDecimal(minor) {
+  const sign = minor < 0n ? '-' : '';
+  const abs = minor < 0n ? -minor : minor;
+  return `${sign}${abs / 100n}.${(abs % 100n).toString().padStart(2, '0')}`;
+}
+
+function groupedMoney(currency, minor) {
+  const decimal = centsToDecimal(minor);
+  const [whole, frac] = decimal.replace('-', '').split('.');
+  const body = `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${frac}`;
+  const signed = decimal.startsWith('-') ? `-${body}` : body;
+  return currency === 'ZMW' ? `ZMW ${signed}` : `${currency} ${signed}`;
 }
 
 function renderVaultSheet(desk) {
@@ -1208,21 +1277,27 @@ function renderVaultSheet(desk) {
   title.textContent = 'From Vault / To Vault';
   const lead = document.createElement('p');
   lead.className = 'hint';
-  lead.textContent = 'Type the cash by denomination. A book left at zero is printed at zero and does not post a line. The sheet goes to this branch’s A4 printer, landscape, before the vault is opened.';
-  const direction = document.createElement('select');
-  direction.id = 'vault-direction';
+  lead.textContent = 'Type the cash by denomination. A book left at zero is printed at zero and does not post a line.';
+  const direction = document.createElement('div');
+  direction.className = 'vault-direction';
+  direction.setAttribute('role', 'radiogroup');
+  direction.setAttribute('aria-label', 'Direction');
   for (const [value, label] of [['FROM_VAULT', 'From Vault'], ['TO_VAULT', 'To Vault']]) {
-    const option = document.createElement('option');
-    option.value = value;
-    option.textContent = label;
-    direction.appendChild(option);
+    const choice = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'vault-direction';
+    input.value = value;
+    if (value === 'FROM_VAULT') input.checked = true;
+    choice.append(input, document.createTextNode(label));
+    direction.appendChild(choice);
   }
   const books = document.createElement('div');
   books.className = 'vault-books';
   const classes = [
-    ['KWACHA_TREASURY', 'Kwacha Treasury Book'],
-    ['FOREIGN_CURRENCY', 'Foreign Currency Treasury Book'],
-    ['BANCS_TREASURY', 'Bancs Treasury Book'],
+    ['KWACHA_TREASURY', 'Kwacha'],
+    ['FOREIGN_CURRENCY', 'Foreign currency'],
+    ['BANCS_TREASURY', 'Bancs'],
   ];
   for (const [bookClass, label] of classes) {
     const block = document.createElement('section');
@@ -1230,23 +1305,34 @@ function renderVaultSheet(desk) {
     const heading = document.createElement('h4');
     heading.textContent = label;
     block.appendChild(heading);
-    const fields = bookClass === 'BANCS_TREASURY' ? VAULT_FIELDS.FOREIGN_CURRENCY : VAULT_FIELDS[bookClass];
-    for (const [channel, code, name] of fields) {
-      const row = document.createElement('label');
-      row.textContent = name;
-      const input = document.createElement('input');
-      input.inputMode = 'decimal';
-      input.placeholder = '0.00';
-      input.dataset.book = bookClass;
-      input.dataset.channel = channel;
-      input.dataset.code = code;
-      row.appendChild(input);
-      block.appendChild(row);
+    const groups = bookClass === 'BANCS_TREASURY' ? VAULT_GROUPS.FOREIGN_CURRENCY : VAULT_GROUPS[bookClass];
+    for (const [groupName, fields] of groups) {
+      if (groups.length > 1) {
+        const group = document.createElement('p');
+        group.className = 'vault-group';
+        group.textContent = groupName;
+        block.appendChild(group);
+      }
+      const grid = document.createElement('div');
+      grid.className = 'denom-grid';
+      for (const [channel, code, name] of fields) {
+        const row = document.createElement('label');
+        row.textContent = name;
+        const input = document.createElement('input');
+        input.inputMode = 'decimal';
+        input.placeholder = '0.00';
+        input.dataset.book = bookClass;
+        input.dataset.channel = channel;
+        input.dataset.code = code;
+        row.appendChild(input);
+        grid.appendChild(row);
+      }
+      block.appendChild(grid);
     }
     books.appendChild(block);
   }
   const pins = document.createElement('div');
-  pins.className = 'entry-meta';
+  pins.className = 'vault-pins';
   const pinField = (id, label, value) => {
     const wrap = document.createElement('label');
     wrap.textContent = label;
@@ -1285,11 +1371,12 @@ function renderVaultSheet(desk) {
       book[input.dataset.channel] = channel;
       payloadBooks[input.dataset.book] = book;
     }
+    const chosen = form.querySelector('input[name="vault-direction"]:checked');
     try {
       const created = await api(`/api/branches/${state.books[0].branch_id}/vault-sheets`, {
         method: 'POST',
         body: JSON.stringify({
-          direction: direction.value,
+          direction: chosen ? chosen.value : 'FROM_VAULT',
           operating_date: state.businessDate,
           books: payloadBooks,
           c1_id: Number(document.getElementById('vault-c1').value),
@@ -1311,165 +1398,13 @@ function renderVaultSheet(desk) {
   panel.appendChild(form);
 }
 
-async function renderAudit() {
-  const panel = document.getElementById('audit-panel');
-  if (!panel) return;
-  if (!state.me || !state.me.can_audit) {
-    panel.hidden = true;
-    panel.replaceChildren();
-    return;
-  }
-  panel.hidden = false;
-  panel.replaceChildren();
-  const assignment = await api('/api/audit/branches');
-  const title = document.createElement('h3');
-  title.textContent = 'Audit review';
-  const lead = document.createElement('p');
-  lead.className = 'hint';
-  lead.textContent = 'One branch at a time. Mark every line, then sign the end-of-audit comment. The audit sheet prints on that branch’s A4 printer. The logo is on the sheet, not on this screen.';
-  const switches = document.createElement('div');
-  switches.className = 'audit-branches';
-  for (const branch of assignment.branches) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = branch.branch_id === assignment.current_audit_branch_id
-      ? `${branch.branch_name} (current)`
-      : branch.branch_name;
-    button.addEventListener('click', async () => {
-      lead.textContent = '';
-      try {
-        await api('/api/audit/current-branch', {
-          method: 'POST',
-          body: JSON.stringify({ branch_id: branch.branch_id }),
-        });
-        await renderAudit();
-      } catch (error) {
-        lead.textContent = error.message;
-      }
-    });
-    switches.appendChild(button);
-  }
-  const from = document.createElement('input');
-  from.type = 'date';
-  from.value = state.businessDate || '';
-  const to = document.createElement('input');
-  to.type = 'date';
-  to.value = state.businessDate || '';
-  const load = document.createElement('button');
-  load.type = 'button';
-  load.textContent = 'Load this range';
-  const linesHost = document.createElement('div');
-  linesHost.className = 'audit-lines';
-  const pending = document.createElement('button');
-  pending.type = 'button';
-  pending.textContent = 'Pending final comment';
-  const comment = document.createElement('textarea');
-  comment.rows = 3;
-  comment.placeholder = 'End of audit comment';
-  const sign = document.createElement('button');
-  sign.type = 'button';
-  sign.textContent = 'Sign off and print';
-  const status = document.createElement('p');
-  status.className = 'staff-meta';
-  pending.addEventListener('click', async () => {
-    status.textContent = '';
-    try {
-      await api(`/api/branches/${assignment.current_audit_branch_id}/audit/pending-final-comment`, { method: 'POST' });
-      status.textContent = 'Marked pending final comment. The branch is not signed off.';
-    } catch (error) {
-      status.textContent = error.message;
-    }
-  });
-  load.addEventListener('click', async () => {
-    linesHost.replaceChildren();
-    status.textContent = '';
-    try {
-      const review = await api(`/api/branches/${assignment.current_audit_branch_id}/audit?from=${from.value}&to=${to.value}`);
-      if (!review.lines.length) linesHost.appendChild(paragraph('No ledger lines in this range.'));
-      for (const line of review.lines) {
-        const card = document.createElement('article');
-        card.className = 'audit-line';
-        const summary = document.createElement('p');
-        summary.textContent = `${line.book_title} · line ${line.line_number} · ${line.date_display} · ${line.accounting_label}`;
-        const select = document.createElement('select');
-        for (const [value, label] of [
-          ['REVIEWED', 'Reviewed'],
-          ['MATCHED', 'Matched'],
-          ['UNMATCHED', 'Unmatched'],
-          ['MATCHED_WITH_DIFFERENCE', 'Matched with a difference'],
-        ]) {
-          const option = document.createElement('option');
-          option.value = value;
-          option.textContent = label;
-          if (line.mark_status === value) option.selected = true;
-          select.appendChild(option);
-        }
-        const kind = document.createElement('select');
-        for (const [value, label] of [['', 'No core reference'], ['CIT_SLIP', 'CIT slip'], ['ATM', 'ATM'], ['TELLER', 'Teller']]) {
-          const option = document.createElement('option');
-          option.value = value;
-          option.textContent = label;
-          if ((line.core_ref_kind || '') === value) option.selected = true;
-          kind.appendChild(option);
-        }
-        const note = document.createElement('input');
-        note.value = line.comment || '';
-        note.placeholder = 'Comment, optional';
-        const save = document.createElement('button');
-        save.type = 'button';
-        save.textContent = 'Save mark';
-        save.addEventListener('click', async () => {
-          status.textContent = '';
-          try {
-            await api(`/api/branches/${assignment.current_audit_branch_id}/audit/lines/${line.matrix_tx_id}/mark`, {
-              method: 'POST',
-              body: JSON.stringify({
-                status: select.value,
-                comment: note.value,
-                core_ref_kind: kind.value,
-              }),
-            });
-            status.textContent = `Line ${line.line_number} marked.`;
-          } catch (error) {
-            status.textContent = error.message;
-          }
-        });
-        card.append(summary, select, kind, note, save);
-        linesHost.appendChild(card);
-      }
-      const physical = review.totals.map((row) => (
-        `${row.currency} physical ${row.physical_minor == null ? 'blank' : row.physical_minor}`
-      )).join(' · ');
-      linesHost.appendChild(paragraph(physical));
-    } catch (error) {
-      status.textContent = error.message;
-    }
-  });
-  sign.addEventListener('click', async () => {
-    status.textContent = '';
-    try {
-      const signed = await api(`/api/branches/${assignment.current_audit_branch_id}/audit/signoff`, {
-        method: 'POST',
-        body: JSON.stringify({ from: from.value, to: to.value, comment: comment.value }),
-      });
-      status.textContent = signed.print && signed.print.status === 'SENT'
-        ? 'Signed off. The audit sheet is on the branch printer.'
-        : 'Signed off. The printer did not take the sheet, and the sign-off still stands.';
-    } catch (error) {
-      status.textContent = error.message;
-    }
-  });
-  panel.append(title, lead, switches, from, to, load, linesHost, pending, comment, sign, status);
-}
-
-function renderMovementOptions() {
-  const panel = document.getElementById('movement-panel');
-  if (!panel) return;
-  const allowed = Boolean(state.me && state.me.can_configure_movements);
-  panel.hidden = !allowed;
-  if (!allowed) return;
-  const options = state.movementOptions || [];
-  document.getElementById('movement-count').textContent = String(options.filter((option) => option.is_active).length);
+function checkBookLine(book) {
+  const title = bookSlipTitle(book.book_class);
+  const status = book.matched ? 'Correct' : 'Difference';
+  const figures = (book.system_totals || []).map((item) => item.figure).join(', ');
+  const counted = (book.counted_totals || []).map((item) => item.figure).join(', ');
+  if (book.matched) return `${title} · Correct · ${figures}`;
+  return `${title} · ${status} · ${figures} · counted ${counted}`;
 }
 
 async function renderSurprise(desk) {
@@ -1477,50 +1412,158 @@ async function renderSurprise(desk) {
   const review = document.getElementById('surprise-review');
   review.replaceChildren();
   const date = state.businessDate || (state.dates[0] && state.dates[0].business_date) || '';
+  const archived = Boolean(state.surpriseArchived);
   let checks = [];
+  let assignmentView = { can_assign: false, can_record: false, candidates: [], assignment: null };
   if (date) {
     try {
-      checks = (await api(`/api/surprise-checks?date=${encodeURIComponent(date)}`)).checks;
+      const query = archived ? `&archived=1` : '';
+      checks = (await api(`/api/surprise-checks?date=${encodeURIComponent(date)}${query}`)).checks;
     } catch (_error) {
       checks = [];
     }
+    try {
+      assignmentView = await api(`/api/surprise-assignment?date=${encodeURIComponent(date)}`);
+    } catch (_error) {
+      assignmentView = assignmentView;
+    }
   }
+  const headingCard = document.createElement('div');
+  headingCard.className = 'check-heading';
+  const headingRow = document.createElement('div');
+  headingRow.className = 'check-heading-row';
   const heading = document.createElement('h3');
   heading.textContent = 'Surprise cash checks';
+  const archivedButton = document.createElement('button');
+  archivedButton.type = 'button';
+  archivedButton.className = 'archived-toggle';
+  archivedButton.textContent = archived ? 'Current' : 'Archived';
+  archivedButton.addEventListener('click', async () => {
+    state.surpriseArchived = !state.surpriseArchived;
+    await renderSurprise(desk);
+  });
+  headingRow.append(heading, archivedButton);
   const lead = document.createElement('p');
   lead.className = 'hint';
-  lead.textContent = 'Shown at the date and time the check happened. A check is not a ledger line, so Bal b/f, Bal b/d, and Bal c/d stay as they were.';
-  review.append(heading, lead);
+  lead.textContent = 'Each book is on its own line. A check is not a ledger line, so Bal b/f, Bal b/d, and Bal c/d stay as they were.';
+  headingCard.append(headingRow, lead);
+  review.appendChild(headingCard);
   if (!checks.length) {
-    review.appendChild(paragraph('No surprise cash check is recorded for this date.'));
+    review.appendChild(paragraph(archived
+      ? 'No archived surprise cash check for this date.'
+      : 'No surprise cash check is recorded for this date.'));
   }
+  const canManage = Boolean(state.me && state.me.can_manage_checks);
   for (const check of checks) {
     const card = document.createElement('article');
     card.className = 'check-card';
-    card.append(
-      paragraph(`${check.checked_at_display} · ${check.checker_name}, ${check.checker_employee_id}`, 'check-when'),
-    );
-    for (const book of check.books) {
-      card.appendChild(paragraph(book.narration_text, 'slip-narration'));
+    const every = (check.books || []).every((book) => book.matched);
+    card.append(paragraph(
+      `${check.checked_at_display} · ${check.checker_name}, ${check.checker_employee_id} · ${every ? 'Every book matches' : 'A book differs'}`,
+      'check-when',
+    ));
+    for (const book of check.books || []) {
+      card.appendChild(paragraph(checkBookLine(book), 'check-line'));
     }
+    const actions = document.createElement('div');
+    actions.className = 'check-actions';
     const open = document.createElement('button');
     open.type = 'button';
     open.textContent = 'Surprise check slip';
     open.addEventListener('click', async () => {
       showSurpriseSlip(await api(`/api/surprise-checks/${check.check_id}/slip`));
     });
-    card.appendChild(open);
+    actions.appendChild(open);
+    if (canManage) {
+      const archive = document.createElement('button');
+      archive.type = 'button';
+      archive.className = 'ghost';
+      archive.textContent = check.archived || archived ? 'Restore' : 'Archive';
+      archive.addEventListener('click', async () => {
+        const path = check.archived || archived
+          ? `/api/surprise-checks/${check.check_id}/restore`
+          : `/api/surprise-checks/${check.check_id}/archive`;
+        await api(path, { method: 'POST' });
+        await renderSurprise(desk);
+      });
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'ghost';
+      remove.textContent = 'Delete';
+      remove.addEventListener('click', async () => {
+        if (!window.confirm('Delete this check? The slip goes with it.')) return;
+        await api(`/api/surprise-checks/${check.check_id}`, { method: 'DELETE' });
+        await renderSurprise(desk);
+      });
+      actions.append(archive, remove);
+    }
+    card.appendChild(actions);
     review.appendChild(card);
   }
-  const allowed = Boolean(state.me && state.me.can_surprise_check && desk.deskOpen !== false && state.books.length);
-  panel.hidden = !allowed;
+  const canAssign = Boolean(assignmentView.can_assign);
+  const canRecord = Boolean(assignmentView.can_record || (state.me && state.me.can_surprise_check));
+  panel.hidden = !canAssign && !canRecord;
   panel.replaceChildren();
-  if (!allowed) return;
+  if (panel.hidden) return;
+  if (canAssign) {
+    const assign = document.createElement('form');
+    assign.className = 'assign-line';
+    const assignTitle = document.createElement('h3');
+    assignTitle.textContent = 'Assign a surprise cash check';
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', 'Person to assign');
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = 'Choose a person';
+    select.appendChild(blank);
+    for (const person of assignmentView.candidates || []) {
+      const option = document.createElement('option');
+      option.value = String(person.user_id);
+      option.textContent = `${person.full_legal_name}, ${person.employee_id}`;
+      if (assignmentView.assignment && Number(assignmentView.assignment.user_id) === Number(person.user_id)) {
+        option.selected = true;
+      }
+      select.appendChild(option);
+    }
+    const assignButton = document.createElement('button');
+    assignButton.type = 'submit';
+    assignButton.textContent = 'Assign';
+    assign.append(assignTitle, select, assignButton);
+    if (assignmentView.assignment) {
+      const withdraw = document.createElement('button');
+      withdraw.type = 'button';
+      withdraw.className = 'ghost';
+      withdraw.textContent = 'Withdraw assignment';
+      withdraw.addEventListener('click', async () => {
+        await api(`/api/surprise-assignment?date=${encodeURIComponent(date)}`, { method: 'DELETE' });
+        await renderSurprise(desk);
+      });
+      assign.appendChild(withdraw);
+    }
+    const assignError = document.createElement('p');
+    assignError.className = 'error';
+    assign.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      assignError.textContent = '';
+      try {
+        await api('/api/surprise-assignment', {
+          method: 'POST',
+          body: JSON.stringify({ business_date: date, user_id: Number(select.value) }),
+        });
+        await renderSurprise(desk);
+      } catch (err) {
+        assignError.textContent = err.message;
+      }
+    });
+    assign.appendChild(assignError);
+    panel.appendChild(assign);
+  }
+  if (!canRecord || desk.deskOpen === false || !state.books.length) return;
   const form = document.createElement('form');
   form.id = 'surprise-form';
   form.append(
     paragraph('Surprise cash check', 'desk-kicker'),
-    paragraph('An auditor or the regional operations manager counts the vault. They stand outside the two custodian seats, so the custodians on duty are named as present and do not sign. The master admin can record one while not acting as someone else, which is how this desk is demonstrated. A vault custodian, the head teller, and a branch manager cannot check the cash they hold.', 'hint'),
+    paragraph('Count each denomination against the figure sitting in the book. Change a box where the vault cash differs. Custodians on duty are named as present and do not sign.', 'hint'),
   );
   const when = document.createElement('input');
   when.id = 'surprise-when';
@@ -1532,6 +1575,7 @@ async function renderSurprise(desk) {
   form.appendChild(labeledField('Date and time', when));
   const host = document.createElement('div');
   host.id = 'surprise-counts';
+  host.className = 'vault-books';
   form.appendChild(host);
   const error = document.createElement('p');
   error.id = 'surprise-error';
@@ -1545,23 +1589,68 @@ async function renderSurprise(desk) {
   const counts = [];
   for (const book of state.books) {
     const view = await api(`/api/books/${book.book_id}`);
-    const block = document.createElement('fieldset');
-    const legend = document.createElement('legend');
-    legend.textContent = `${view.layout.title} · system position`;
+    const block = document.createElement('section');
+    block.className = 'vault-book';
+    const legend = document.createElement('h4');
+    legend.textContent = view.layout.title;
     block.appendChild(legend);
-    const fields = {};
-    for (const [currency, value] of Object.entries(view.position || {})) {
-      if (currency === 'error' || !value || !value.decimal) continue;
-      const input = document.createElement('input');
-      input.value = value.decimal;
-      input.inputMode = 'decimal';
-      input.required = true;
-      input.dataset.currency = currency;
-      fields[currency] = input;
-      block.appendChild(labeledField(`${currency} counted (${value.display} on the book)`, input));
+    const fields = [];
+    for (const group of view.layout.groups || []) {
+      const denoms = (group.columns || []).filter((column) => column.kind === 'DENOMINATION');
+      if (!denoms.length) continue;
+      if (book.book_class !== 'KWACHA_TREASURY') {
+        const groupName = document.createElement('p');
+        groupName.className = 'vault-group';
+        groupName.textContent = group.label || group.id;
+        block.appendChild(groupName);
+      }
+      const grid = document.createElement('div');
+      grid.className = 'denom-grid';
+      for (const column of denoms) {
+        const currency = book.book_class === 'KWACHA_TREASURY' ? 'ZMW' : column.channel;
+        const sitting = view.denomination_position
+          && view.denomination_position[column.channel]
+          && view.denomination_position[column.channel][column.code]
+          ? view.denomination_position[column.channel][column.code]
+          : '0.00';
+        const row = document.createElement('label');
+        const caption = document.createElement('span');
+        caption.textContent = column.header;
+        const input = document.createElement('input');
+        input.inputMode = 'decimal';
+        input.required = true;
+        input.value = sitting;
+        input.dataset.currency = currency;
+        input.dataset.channel = column.channel;
+        input.dataset.code = column.code;
+        const under = document.createElement('small');
+        under.textContent = groupedMoney(currency, amountCents(sitting));
+        row.append(caption, input, under);
+        grid.appendChild(row);
+        fields.push(input);
+      }
+      block.appendChild(grid);
     }
+    const compare = document.createElement('p');
+    compare.className = 'count-compare';
+    block.appendChild(compare);
+    const refresh = () => {
+      const sums = {};
+      for (const input of fields) {
+        const currency = input.dataset.currency;
+        sums[currency] = (sums[currency] || 0n) + amountCents(input.value);
+      }
+      const order = book.book_class === 'KWACHA_TREASURY' ? ['ZMW'] : ['EUR', 'GBP', 'USD', 'ZAR'];
+      compare.textContent = order.map((currency) => {
+        const bookMinor = amountCents(view.position && view.position[currency] ? view.position[currency].decimal : '0');
+        const vaultMinor = sums[currency] || 0n;
+        return `Book ${groupedMoney(currency, bookMinor)} · Vault ${groupedMoney(currency, vaultMinor)}`;
+      }).join(' · ');
+    };
+    for (const input of fields) input.addEventListener('input', refresh);
+    refresh();
     host.appendChild(block);
-    counts.push({ book_class: book.book_class, fields });
+    counts.push({ book_class: book.book_class, fields, view });
   }
   form.dataset.ready = '1';
   form._counts = counts;
@@ -1575,7 +1664,10 @@ async function submitSurprise(event) {
   const when = document.getElementById('surprise-when').value;
   const books = (form._counts || []).map((book) => {
     const counted = {};
-    for (const [currency, input] of Object.entries(book.fields)) counted[currency] = input.value.trim();
+    for (const input of book.fields) {
+      const currency = input.dataset.currency;
+      counted[currency] = centsToDecimal((amountCents(counted[currency] || '0')) + amountCents(input.value));
+    }
     return { book_class: book.book_class, counted };
   });
   try {
@@ -1612,11 +1704,6 @@ async function renderEntraAdmin() {
   const button = document.getElementById('entra-toggle');
   const on = Boolean(setting.entraEnabled);
   button.setAttribute('aria-pressed', on ? 'true' : 'false');
-  button.classList.toggle('bg-slate-800', on);
-  button.classList.toggle('bg-slate-300', !on);
-  const knob = button.querySelector('span');
-  knob.classList.toggle('translate-x-5', on);
-  knob.classList.toggle('translate-x-0', !on);
   document.getElementById('entra-admin-copy').textContent = entraCopy(on);
 }
 
@@ -2347,9 +2434,8 @@ function renderEntry(view) {
   document.getElementById('entry-submit').textContent = 'Post the line';
   document.getElementById('entry-cancel').hidden = true;
   document.getElementById('entry-flow').disabled = false;
-  const carry = view.carry_label || 'In Vault';
   note.textContent = view.square_required
-    ? `Amounts, not pieces. Bal c/d is written only after ${carry}.`
+    ? 'Amounts, not pieces. Bal c/d can be written on this open book without an In Vault line first.'
     : 'Amounts, not pieces. The line is appended to this open book.';
   if (canAmendBook(view)) {
     note.textContent += ' Amend any line while this book is open. A later Bal c/d follows the corrected position.';
