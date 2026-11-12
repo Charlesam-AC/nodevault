@@ -893,6 +893,13 @@ function renderHandover(rotation, deskOpen) {
     ? `Handover due ${rotation.dueDate}`
     : 'This cycle stays shut until handover is acknowledged';
   host.append(kicker, title);
+  if (rotation.priorLock && !rotation.priorLock.ready) {
+    const note = document.createElement('p');
+    note.className = 'error';
+    note.textContent = rotation.priorLock.message;
+    host.appendChild(note);
+    return;
+  }
   const form = document.createElement('form');
   form.id = 'handover-form';
   form.className = 'handover-form';
