@@ -893,6 +893,13 @@ function renderHandover(rotation, deskOpen) {
     ? `Handover due ${rotation.dueDate}`
     : 'This cycle stays shut until handover is acknowledged';
   host.append(kicker, title);
+  if (rotation.priorLock && !rotation.priorLock.ready) {
+    const note = document.createElement('p');
+    note.className = 'error';
+    note.textContent = rotation.priorLock.message;
+    host.appendChild(note);
+    return;
+  }
   const form = document.createElement('form');
   form.id = 'handover-form';
   form.className = 'handover-form';
@@ -1688,8 +1695,8 @@ async function submitSurprise(event) {
 
 function entraCopy(enabled) {
   return enabled
-    ? 'Directory sign-in is on. Turn it off to allow manual desk passwords. Break-glass requires manual override.'
-    : 'Directory sign-in is off. Manual desk passwords are the door. Break-glass still requires the directory assertion.';
+    ? 'Directory sign-in is on. This deployment still refuses an unsigned Entra assertion. Break-glass uses each person\'s directory password.'
+    : 'Directory sign-in is off. Desk passwords are the door. Break-glass uses each person\'s directory password.';
 }
 
 async function renderEntraAdmin() {
@@ -1746,7 +1753,7 @@ function renderActAs() {
     return;
   }
   panel.hidden = false;
-  document.getElementById('acting-copy').textContent = 'Open the desk as a staff member. A vault custodian or the weekly head teller can write a line.';
+  document.getElementById('acting-copy').textContent = 'The closed sample stays readable. Acknowledge handover to open the next working day, then write a line here or open the desk as a staff member.';
   fillActAsSelect();
 }
 
@@ -2562,6 +2569,182 @@ function entryPayload() {
   };
 }
 
+const AUDIT_MARKS = [
+  ['REVIEWED', 'Reviewed'],
+  ['MATCHED', 'Matched'],
+  ['UNMATCHED', 'Unmatched'],
+  ['MATCHED_WITH_DIFFERENCE', 'Matched with a difference'],
+];
+
+function auditRange() {
+  const dates = (state.dates || []).map((item) => item.business_date).filter(Boolean).sort();
+  const from = dates[0] || state.businessDate;
+  const to = dates[dates.length - 1] || state.businessDate;
+  return { from, to };
+}
+
+async function auditBranchId() {
+  if (state.me?.can_act_as && state.me.branch_id) return state.me.branch_id;
+  const assigned = await api('/api/audit/branches');
+  if (assigned.current_audit_branch_id) return assigned.current_audit_branch_id;
+  return { choose: assigned.branches || [] };
+}
+
+function paintAuditReview(panel, branchId, review) {
+  const { from, to } = auditRange();
+  const title = document.createElement('h3');
+  title.className = 'desk-title';
+  title.textContent = 'Audit review';
+  const lead = document.createElement('p');
+  lead.className = 'hint';
+  lead.textContent = `${review.branch_name} · ${review.range_from_display} to ${review.range_to_display}. Mark every line, then sign off.`;
+  panel.append(title, lead);
+  for (const line of review.lines || []) {
+    const row = document.createElement('form');
+    row.className = 'audit-line';
+    const name = document.createElement('span');
+    name.textContent = `${line.date_display} · ${line.book_title} · ${line.accounting_label}`;
+    const mark = document.createElement('select');
+    mark.setAttribute('aria-label', `Mark for ${line.accounting_label}`);
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = 'Unmarked';
+    mark.appendChild(blank);
+    for (const [value, label] of AUDIT_MARKS) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      if (line.mark_status === value) option.selected = true;
+      mark.appendChild(option);
+    }
+    const comment = document.createElement('input');
+    comment.value = line.comment || '';
+    comment.maxLength = 2000;
+    comment.placeholder = 'Comment';
+    comment.setAttribute('aria-label', `Comment for ${line.accounting_label}`);
+    const button = document.createElement('button');
+    button.type = 'submit';
+    button.textContent = 'Save mark';
+    row.append(name, mark, comment, button);
+    row.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const error = panel.querySelector('.audit-error');
+      error.textContent = '';
+      if (!mark.value) {
+        error.textContent = 'Choose a mark before saving.';
+        return;
+      }
+      button.disabled = true;
+      try {
+        await api(`/api/branches/${branchId}/audit/lines/${line.matrix_tx_id}/mark`, {
+          method: 'POST',
+          body: JSON.stringify({ status: mark.value, comment: comment.value }),
+        });
+        await renderAudit();
+      } catch (err) {
+        error.textContent = err.message;
+        button.disabled = false;
+      }
+    });
+    panel.appendChild(row);
+  }
+  const signoff = document.createElement('form');
+  signoff.className = 'audit-signoff';
+  const end = document.createElement('textarea');
+  end.required = true;
+  end.maxLength = 2000;
+  end.placeholder = 'End-of-audit comment';
+  end.setAttribute('aria-label', 'End-of-audit comment');
+  const signButton = document.createElement('button');
+  signButton.type = 'submit';
+  signButton.textContent = 'Sign off this range';
+  const error = document.createElement('p');
+  error.className = 'error audit-error';
+  error.setAttribute('role', 'alert');
+  signoff.append(end, signButton, error);
+  signoff.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    error.textContent = '';
+    signButton.disabled = true;
+    try {
+      await api(`/api/branches/${branchId}/audit/signoff`, {
+        method: 'POST',
+        body: JSON.stringify({ from, to, comment: end.value.trim() }),
+      });
+      await renderAudit();
+    } catch (err) {
+      error.textContent = err.message;
+      signButton.disabled = false;
+    }
+  });
+  panel.appendChild(signoff);
+}
+
+async function renderAudit() {
+  const panel = document.getElementById('audit-panel');
+  if (!panel) return;
+  panel.replaceChildren();
+  if (!state.me?.can_audit) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  const branch = await auditBranchId();
+  if (branch && branch.choose) {
+    const title = document.createElement('h3');
+    title.className = 'desk-title';
+    title.textContent = 'Audit review';
+    const lead = document.createElement('p');
+    lead.className = 'hint';
+    lead.textContent = branch.choose.length
+      ? 'Choose the branch to audit.'
+      : 'No branch is assigned for this audit.';
+    panel.append(title, lead);
+    if (!branch.choose.length) return;
+    const form = document.createElement('form');
+    form.className = 'audit-signoff';
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', 'Branch to audit');
+    for (const item of branch.choose) {
+      const option = document.createElement('option');
+      option.value = String(item.branch_id);
+      option.textContent = `${item.branch_name} · ${item.branch_code}`;
+      select.appendChild(option);
+    }
+    const button = document.createElement('button');
+    button.type = 'submit';
+    button.textContent = 'Audit this branch';
+    const error = document.createElement('p');
+    error.className = 'error';
+    error.setAttribute('role', 'alert');
+    form.append(select, button, error);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      error.textContent = '';
+      try {
+        await api('/api/audit/current-branch', {
+          method: 'POST',
+          body: JSON.stringify({ branch_id: Number(select.value) }),
+        });
+        await renderAudit();
+      } catch (err) {
+        error.textContent = err.message;
+      }
+    });
+    panel.appendChild(form);
+    return;
+  }
+  const { from, to } = auditRange();
+  if (!from || !to) {
+    const note = document.createElement('p');
+    note.textContent = 'No closed books are on this desk yet.';
+    panel.appendChild(note);
+    return;
+  }
+  const review = await api(`/api/branches/${branch}/audit?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+  paintAuditReview(panel, branch, review);
+}
+
 async function enterDesk(date) {
   const keepClass = state.book?.book?.book_class;
   state.me = await api('/api/me');
@@ -2645,10 +2828,16 @@ async function enterDesk(date) {
     if (vault) vault.textContent = error.message;
   }
   const ledger = document.getElementById('ledger-panel');
-  ledger.hidden = !desk.deskOpen;
-  if (!desk.deskOpen) {
-    document.getElementById('desk-status').textContent = `Handover required before ${desk.businessDate} can open.`;
+  const readableWhileShut = Boolean(state.me?.can_act_as && desk.books.length);
+  ledger.hidden = !desk.deskOpen && !readableWhileShut;
+  if (!desk.deskOpen && !readableWhileShut) {
+    const when = desk.gatedDate || desk.businessDate;
+    document.getElementById('desk-status').textContent = `Handover required before ${when} can open.`;
     return;
+  }
+  if (!desk.deskOpen) {
+    const when = desk.gatedDate || desk.businessDate;
+    document.getElementById('desk-status').textContent = `Handover required before ${when} can open. The closed books stay readable.`;
   }
   renderTabs();
   renderBookDate();
@@ -2940,11 +3129,11 @@ document.getElementById('glass-form').addEventListener('submit', async (event) =
       method: 'POST',
       body: JSON.stringify({
         admin_email: document.getElementById('glass-admin-email').value,
-        admin_assertion: document.getElementById('glass-admin-assertion').value,
+        admin_password: document.getElementById('glass-admin-password').value,
         custodian_one_email: document.getElementById('glass-c1-email').value,
-        custodian_one_assertion: document.getElementById('glass-c1-assertion').value,
+        custodian_one_password: document.getElementById('glass-c1-password').value,
         custodian_two_email: document.getElementById('glass-c2-email').value,
-        custodian_two_assertion: document.getElementById('glass-c2-assertion').value,
+        custodian_two_password: document.getElementById('glass-c2-password').value,
       }),
     });
     state.token = result.token;
@@ -3125,7 +3314,7 @@ window.addEventListener('resize', syncSuspendedSheet);
 function applyPublicConfig(config) {
   const passwordForm = document.getElementById('password-form');
   const entraFold = document.getElementById('entra-fold');
-  const entraOn = config.entraEnabled !== false;
+  const entraOn = config.entraLogin === true && config.entraEnabled !== false;
   passwordForm.hidden = !config.localLogin;
   entraFold.hidden = !entraOn;
   entraFold.open = entraOn && !config.localLogin;

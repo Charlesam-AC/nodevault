@@ -112,7 +112,7 @@ A volume created before directory passwords existed does not have `password_hash
 
 Demo sign-in (only when `SEED_DEMO_DATA=true`):
 
-Password sign-in is on in the sample `.env` (`ENABLE_LOCAL_LOGIN=true` and `AUTH_MODE=both`). Every seeded account uses the same directory password, `Vault-demo-2026` (`DEMO_PASSWORD`). That password is not the closing PIN.
+Password sign-in is on only when `ENABLE_LOCAL_LOGIN=true` and `AUTH_MODE` is not `entra`. Seeded accounts share the directory password you set as `DEMO_PASSWORD`. That password is not the closing PIN. The sample `.env` uses placeholders. Replace them before the desk is reachable. The hosted start does not fill these in and does not seed a bank.
 
 | Role | Email |
 | --- | --- |
@@ -124,22 +124,19 @@ Password sign-in is on in the sample `.env` (`ENABLE_LOCAL_LOGIN=true` and `AUTH
 | IT super admin | `it.admin@demo-bank.example` |
 | Regional operations manager | `rom@demo-bank.example` |
 
-The IT super admin is frozen after setup. Password sign-in and Entra sign-in both refuse that account until both vault custodians open a break-glass window. Break-glass still uses the Entra assertion.
+The IT super admin is frozen after setup. Password sign-in refuses that account until both vault custodians open a break-glass window. Break-glass checks each person's own directory password. A shared Entra assertion does not open a session.
 
 Master admin (created on startup when `SEED_DEMO_DATA=true`):
 
 | | |
 | --- | --- |
 | Email | `admin@demo-bank.example` (`MASTER_ADMIN_EMAIL`) |
-| Password | `NodeVault-admin-2026` (`MASTER_ADMIN_PASSWORD`) |
+| Password | the value of `MASTER_ADMIN_PASSWORD` in the environment |
 | Role | IT super admin |
 
 This password is not the shared demo password and not the closing PIN. It opens a normal desk session, including the Entra switch. `it.admin@demo-bank.example` stays frozen.
 
-Entra mock sign-in (when `ENTRA_MODE=mock`):
-
-- Assertion: the value of `MOCK_ENTRA_ASSERTION` (`change-me-entra-assertion` in the sample file)
-- Closing PIN: the value of `DEMO_CLOSING_PIN` (`135790` in the sample file)
+`POST /api/auth/login` does not issue a session. This build refuses unsigned Entra assertions. The closing PIN is `DEMO_CLOSING_PIN`. It is not a directory password. Neither value is chosen by the hosted start.
 
 Turn password sign-in off for a live Entra deployment by setting both of these, then restarting the API:
 
@@ -170,15 +167,15 @@ Copy `.env.example`. Do not commit `.env`.
 | `APP_DB_PASSWORD` | Password for `nodevault_app`, the role the API uses |
 | `JWT_SECRET` | Desk session signing key (32+ characters) |
 | `ENFORCED_CORPORATE_DOMAIN` | Sign-in emails must use this domain. Empty allows each tenant's own domain |
-| `ENTRA_MODE` | `mock` for local. `entra` refuses sessions rather than trusting unsigned tokens |
+| `ENTRA_MODE` | `entra` or `mock`. Neither mode accepts an unsigned assertion |
 | `AUTH_MODE` | `both` (demo), `local`, or `entra`. `entra` refuses password sign-in |
 | `ENABLE_LOCAL_LOGIN` | `true` shows the email and password form. `false` refuses it |
 | `DEMO_PASSWORD` | Shared demo directory password, hashed into `password_hash`. Not the closing PIN |
 | `LOCAL_LOGIN_MAX_FAILURES` / `LOCAL_LOGIN_LOCKOUT_MINUTES` | Lock an account after repeated wrong passwords |
 | `BUSINESS_TIMEZONE` / `BUSINESS_DAY_START` | When the next business morning begins. Default Africa/Lusaka 08:00 |
+| `DESK_NOW` | ISO timestamp the desk uses instead of the wall clock. Empty follows the real time. `2026-10-05T10:00:00+02:00` opens Monday 5 October, carried forward from the locked Saturday sample |
 | `TRADING_WEEKDAYS` | Days the desk opens. Default `Mon,Tue,Wed,Thu,Fri,Sat`. Sunday is closed unless named here |
 | `BANK_HOLIDAYS` | Extra comma-separated dates, added on top of the Zambian public-holiday calendar |
-| `MOCK_ENTRA_ASSERTION` | Shared local stand-in for an Entra sign-in |
 | `CORE_BANK_MODE` | `mock` reads `mock_core_positions`. `http` GETs `${CORE_BANK_API_URL}/v1/position/:branchId` |
 | `CORE_BANK_API_URL` | Core banking base URL. Amounts must be decimal strings, not JSON numbers |
 | `PRINTER_MODE` | `stub` writes the PDF to disk. `raw` sends it to the branch `printer_target`. `ipp` sends an IPP Print-Job. `network` POSTs to `PRINTER_URL` |
@@ -192,7 +189,7 @@ Copy `.env.example`. Do not commit `.env`.
 
 ## Security model
 
-- Microsoft Entra ID remains the corporate login. This build ships a mock verifier and a live mode that fails closed. Password sign-in is a second door, hashed in `password_hash`, and it is off unless `ENABLE_LOCAL_LOGIN=true` and `AUTH_MODE` is not `entra`.
+- Microsoft Entra ID remains the corporate login. This build does not verify live tokens and does not accept a shared mock assertion, so `POST /api/auth/login` issues no session. Password sign-in is hashed in `password_hash`, and it is off unless `ENABLE_LOCAL_LOGIN=true` and `AUTH_MODE` is not `entra`. Break-glass checks three directory passwords even when that public door is off.
 - A deactivated user (`is_active = false`) is rejected on the next request. Repeated wrong passwords lock that account (`failed_login_count`, `locked_until`).
 - The enforced corporate domain is checked against the tenant domain for both sign-in methods.
 - Closing PINs live in `closing_pin_hash`. Directory passwords live in `password_hash`. The two hashes are produced separately and the demo values are different secrets.

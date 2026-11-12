@@ -21,6 +21,31 @@ const POSTS = [
   { code: 'CUSTODIAN_TWO', role: 'VAULT_CUSTODIAN', label: 'Vault custodian, seat 2' },
   { code: 'HEAD_TELLER', role: 'HEAD_TELLER_COORDINATOR', label: 'Head Teller' },
 ];
+const BOOK_TITLE = {
+  KWACHA_TREASURY: 'Kwacha',
+  FOREIGN_CURRENCY: 'foreign notes',
+  BANCS_TREASURY: 'Bancs',
+};
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function spokenDate(isoDate) {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return `${WEEKDAYS[weekday]} ${day} ${MONTHS[month - 1]} ${year}`;
+}
+
+function unclosedMessage(bookClass, businessDate, kind) {
+  const title = BOOK_TITLE[bookClass] || bookClass;
+  const day = spokenDate(businessDate);
+  if (kind === 'missing') {
+    return `Handover needs the ${title} book locked for ${day}. That day has not been opened.`;
+  }
+  if (kind === 'open') {
+    return `Handover needs the ${title} book locked for ${day}. That book is still open.`;
+  }
+  return `The locked ${title} book for ${day} has no balance carried down.`;
+}
 
 function postSpec(code) {
   const spec = POSTS.find((post) => post.code === code);
@@ -122,11 +147,15 @@ async function rotationView(db, tenantId, branchId, now = new Date(), overrides 
       });
     }
   }
+  const priorLock = dueDate
+    ? await describePriorLock(db, tenantId, branchId, dueDate)
+    : null;
   return {
     today,
     upcomingBusinessDate: upcomingBusinessDate(now, options),
     dueDate,
     due,
+    priorLock,
     posts,
   };
 }
@@ -154,6 +183,28 @@ function earliestDue(posts) {
   return dates[0] || null;
 }
 
+async function describePriorLock(db, tenantId, branchId, effectiveDate) {
+  const priorDate = previousBusinessDay(
+    effectiveDate,
+    await optionsForBranch(db, tenantId, branchId, { anchorDate: effectiveDate }),
+  );
+  for (const bookClass of BOOK_ORDER) {
+    const book = await db.query(
+      `SELECT book_id, status
+       FROM branch_vault_books
+       WHERE tenant_id = $1 AND branch_id = $2 AND book_class = $3 AND business_date = $4`,
+      [tenantId, branchId, bookClass, priorDate],
+    );
+    if (book.rowCount !== 1) {
+      return { date: priorDate, ready: false, message: unclosedMessage(bookClass, priorDate, 'missing') };
+    }
+    if (book.rows[0].status !== 'BALANCED_CLOSED') {
+      return { date: priorDate, ready: false, message: unclosedMessage(bookClass, priorDate, 'open') };
+    }
+  }
+  return { date: priorDate, ready: true, message: null };
+}
+
 async function lockedCarrySnapshot(db, tenantId, branchId, businessDate) {
   const balances = {};
   for (const bookClass of BOOK_ORDER) {
@@ -163,17 +214,16 @@ async function lockedCarrySnapshot(db, tenantId, branchId, businessDate) {
        WHERE tenant_id = $1 AND branch_id = $2 AND book_class = $3 AND business_date = $4`,
       [tenantId, branchId, bookClass, businessDate],
     );
-    if (book.rowCount !== 1 || book.rows[0].status !== 'BALANCED_CLOSED') {
-      throw new VaultError(
-        'HANDOVER_UNCLOSED',
-        `Handover needs a locked ${bookClass} book for ${businessDate}`,
-        409,
-      );
+    if (book.rowCount !== 1) {
+      throw new VaultError('HANDOVER_UNCLOSED', unclosedMessage(bookClass, businessDate, 'missing'), 409);
+    }
+    if (book.rows[0].status !== 'BALANCED_CLOSED') {
+      throw new VaultError('HANDOVER_UNCLOSED', unclosedMessage(bookClass, businessDate, 'open'), 409);
     }
     const rows = await loadRows(db, book.rows[0].book_id);
     const carried = [...rows].reverse().find((row) => row.accountingLabel === 'Bal c/d' && row.flowDirection === 'BAL');
     if (!carried) {
-      throw new VaultError('HANDOVER_UNCLOSED', `No Bal c/d on the locked ${bookClass} book`, 409);
+      throw new VaultError('HANDOVER_UNCLOSED', unclosedMessage(bookClass, businessDate, 'no-balance'), 409);
     }
     balances[bookClass] = amountsFromCells(carried.cells);
   }

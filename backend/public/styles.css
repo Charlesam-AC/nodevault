@@ -2312,7 +2312,20 @@ dialog.slip .sig-line {
   gap: 0.2rem;
 }
 .sig-name { font-weight: 650; }
+.audit-line {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1.4fr) minmax(8rem, 0.8fr) minmax(8rem, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.45rem 0;
+}
+.audit-signoff {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
 @media (max-width: 900px) {
   .vault-pins { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .denom-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .audit-line { grid-template-columns: 1fr; }
 }

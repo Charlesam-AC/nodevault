@@ -80,37 +80,42 @@ async function rejectFrozenAdmin(db, user, allowFrozenAdmin) {
   }
 }
 
-async function authenticateCorporateIdentity(db, {
-  email,
-  assertion,
-  allowFrozenAdmin = false,
-  forBreakGlass = false,
-}) {
-  const mode = process.env.ENTRA_MODE || 'mock';
-  if (mode !== 'mock') {
+async function authenticateCorporateIdentity() {
+  // A shared mock assertion is not proof of one person. This build has no
+  // live token verifier, so directory sign-in does not issue a session.
+  throw new VaultError(
+    'ENTRA_UNAVAILABLE',
+    'Microsoft Entra sign-in is not configured. Unsigned assertions are refused.',
+    503,
+  );
+}
+
+async function proveDirectoryPassword(db, { email, password, allowFrozenAdmin = false }) {
+  const user = await loadUserByEmail(db, email);
+  const presented = String(password || '');
+  if (!user || !user.is_active || !user.password_hash) {
+    await bcrypt.compare(presented, DUMMY_PASSWORD_HASH);
+    throw new VaultError('ACCESS_DENIED', 'Access denied', 401);
+  }
+  const matches = await bcrypt.compare(presented, user.password_hash);
+  assertCorporateDomain(user.work_email, user.corporate_domain);
+  if (user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
     throw new VaultError(
-      'ENTRA_UNAVAILABLE',
-      'Live Microsoft Entra ID is not configured. Unsigned tokens are refused. Set ENTRA_MODE=mock for a local desk.',
-      503,
+      'LOCKED',
+      'This account is locked after repeated failed sign-ins. Try again later.',
+      429,
     );
   }
-  const expected = process.env.MOCK_ENTRA_ASSERTION || '';
-  if (!expected || !sameSecret(assertion || '', expected)) {
-    throw new VaultError('ACCESS_DENIED', 'Access denied', 401);
-  }
-  const user = await loadUserByEmail(db, email);
-  if (!user || !user.is_active) {
-    throw new VaultError('ACCESS_DENIED', 'Access denied', 401);
-  }
-  assertCorporateDomain(user.work_email, user.corporate_domain);
-  if (!forBreakGlass) {
-    const { readEntraEnabled } = require('../services/entraToggle');
-    const enabled = await readEntraEnabled(db, user.tenant_id);
-    if (!enabled) {
-      throw new VaultError('ENTRA_DISABLED', 'Microsoft Entra sign-in is turned off.', 403);
-    }
+  if (!matches) {
+    await recordPasswordFailure(db, user);
   }
   await rejectFrozenAdmin(db, user, allowFrozenAdmin);
+  await db.query(
+    `UPDATE nodevault_users
+     SET failed_login_count = 0, locked_until = NULL
+     WHERE user_id = $1`,
+    [user.user_id],
+  );
   return user;
 }
 
@@ -139,40 +144,15 @@ async function recordPasswordFailure(db, user) {
   throw new VaultError('ACCESS_DENIED', 'Access denied', 401);
 }
 
-async function authenticateLocalPassword(db, { email, password, allowFrozenAdmin = false }) {
+async function authenticateLocalPassword(db, options) {
   if (!localLoginEnabled()) {
     throw new VaultError(
       'LOCAL_LOGIN_DISABLED',
-      'Password sign-in is turned off for this deployment. Use Microsoft Entra ID.',
+      'Password sign-in is turned off for this deployment.',
       403,
     );
   }
-  const user = await loadUserByEmail(db, email);
-  const presented = String(password || '');
-  if (!user || !user.is_active || !user.password_hash) {
-    await bcrypt.compare(presented, DUMMY_PASSWORD_HASH);
-    throw new VaultError('ACCESS_DENIED', 'Access denied', 401);
-  }
-  const matches = await bcrypt.compare(presented, user.password_hash);
-  assertCorporateDomain(user.work_email, user.corporate_domain);
-  if (user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
-    throw new VaultError(
-      'LOCKED',
-      'This account is locked after repeated failed sign-ins. Try again later.',
-      429,
-    );
-  }
-  if (!matches) {
-    await recordPasswordFailure(db, user);
-  }
-  await rejectFrozenAdmin(db, user, allowFrozenAdmin);
-  await db.query(
-    `UPDATE nodevault_users
-     SET failed_login_count = 0, locked_until = NULL
-     WHERE user_id = $1`,
-    [user.user_id],
-  );
-  return user;
+  return proveDirectoryPassword(db, options);
 }
 
 function signSession(user, { breakGlassId = null, expiresInSeconds = null, actorUserId = null } = {}) {
@@ -295,6 +275,7 @@ module.exports = {
   emailDomain,
   localLoginEnabled,
   authenticateCorporateIdentity,
+  proveDirectoryPassword,
   authenticateLocalPassword,
   signSession,
   resolvePrincipal,

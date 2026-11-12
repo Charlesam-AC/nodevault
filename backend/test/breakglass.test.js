@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const bcrypt = require('bcryptjs');
 const { openBreakGlass, WINDOW_MS } = require('../services/breakglass');
-const { authenticateCorporateIdentity, resolvePrincipal } = require('../middleware/auth');
+const { authenticateCorporateIdentity, authenticateLocalPassword, resolvePrincipal } = require('../middleware/auth');
 const { setupPools, resetDatabase, createDesk, closePools, pools } = require('./helpers');
 
 let pinHash;
@@ -18,13 +18,32 @@ test.after(async () => {
 
 test('break-glass needs both custodians and expires after 60 minutes', async () => {
   await resetDatabase();
-  const desk = await createDesk(pinHash);
-  const { applicationPool } = pools();
-  const assertion = process.env.MOCK_ENTRA_ASSERTION;
+  await createDesk(pinHash);
+  const { applicationPool, adminPool } = pools();
+  const password = 'Vault-demo-2026';
+  const passwordHash = await bcrypt.hash(password, 6);
+  await adminPool.query(
+    `UPDATE nodevault_users SET password_hash = $1
+     WHERE work_email = ANY($2::text[])`,
+    [passwordHash, [
+      'it.admin@demo-bank.example',
+      'charles.amulike@demo-bank.example',
+      'custodian.two@demo-bank.example',
+    ]],
+  );
+  process.env.ENABLE_LOCAL_LOGIN = 'true';
+  process.env.AUTH_MODE = 'both';
   await assert.rejects(
     () => authenticateCorporateIdentity(applicationPool, {
       email: 'it.admin@demo-bank.example',
-      assertion,
+      assertion: 'change-me-entra-assertion',
+    }),
+    (error) => error.code === 'ENTRA_UNAVAILABLE',
+  );
+  await assert.rejects(
+    () => authenticateLocalPassword(applicationPool, {
+      email: 'it.admin@demo-bank.example',
+      password,
     }),
     (error) => error.code === 'ADMIN_FROZEN',
   );
@@ -32,11 +51,11 @@ test('break-glass needs both custodians and expires after 60 minutes', async () 
   const now = new Date('2026-10-03T18:00:00.000Z');
   const opened = await openBreakGlass(applicationPool, {
     admin_email: 'it.admin@demo-bank.example',
-    admin_assertion: assertion,
+    admin_password: password,
     custodian_one_email: 'charles.amulike@demo-bank.example',
-    custodian_one_assertion: assertion,
+    custodian_one_password: password,
     custodian_two_email: 'custodian.two@demo-bank.example',
-    custodian_two_assertion: assertion,
+    custodian_two_password: password,
   }, { now: () => now });
   const span = new Date(opened.expires_at).getTime() - new Date(opened.opened_at).getTime();
   assert.equal(span, WINDOW_MS);
@@ -52,13 +71,24 @@ test('break-glass needs both custodians and expires after 60 minutes', async () 
   await assert.rejects(
     () => openBreakGlass(applicationPool, {
       admin_email: 'it.admin@demo-bank.example',
-      admin_assertion: assertion,
+      admin_password: password,
       custodian_one_email: 'charles.amulike@demo-bank.example',
-      custodian_one_assertion: assertion,
+      custodian_one_password: password,
       custodian_two_email: 'charles.amulike@demo-bank.example',
-      custodian_two_assertion: assertion,
+      custodian_two_password: password,
     }),
     (error) => error.code === 'DUPLICATE_SIGNATORY',
+  );
+  await assert.rejects(
+    () => openBreakGlass(applicationPool, {
+      admin_email: 'it.admin@demo-bank.example',
+      admin_assertion: 'change-me-entra-assertion',
+      custodian_one_email: 'charles.amulike@demo-bank.example',
+      custodian_one_assertion: 'change-me-entra-assertion',
+      custodian_two_email: 'custodian.two@demo-bank.example',
+      custodian_two_assertion: 'change-me-entra-assertion',
+    }),
+    (error) => error.code === 'ACCESS_DENIED',
   );
 
   const audit = await applicationPool.query(

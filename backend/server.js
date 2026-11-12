@@ -1,8 +1,10 @@
+const fs = require('fs');
 const path = require('path');
 const express = require('express');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const { createPool, waitForDb } = require('./db');
+const { deskNow } = require('./services/clock');
 const { VaultError } = require('./services/errors');
 const { syncCatalogue } = require('./services/catalogue');
 const { seedDemo, ensureMasterAdmin, ensureCeremony } = require('./services/seed');
@@ -199,6 +201,7 @@ function buildApp(db) {
       enforcedDomain: process.env.ENFORCED_CORPORATE_DOMAIN || '',
       authMode: process.env.AUTH_MODE || 'both',
       localLogin: localLoginEnabled(),
+      entraLogin: false,
       entraEnabled: await readEntraEnabled(db),
     });
   }));
@@ -212,18 +215,6 @@ function buildApp(db) {
 
   app.put('/api/auth/entra', guard, asyncRoute(async (req, res) => {
     res.json(await setEntraEnabled(db, req.user, req.body.enabled));
-  }));
-
-  app.get('/api/auth/demo-directory', asyncRoute(async (_req, res) => {
-    if ((process.env.ENTRA_MODE || 'mock') !== 'mock' || process.env.SEED_DEMO_DATA !== 'true') {
-      throw new VaultError('NOT_FOUND', 'No demo directory is published', 404);
-    }
-    const rows = await db.query(
-      `SELECT work_email, full_legal_name, system_role, two_letter_initials, employee_id
-       FROM nodevault_users
-       ORDER BY user_id`,
-    );
-    res.json({ users: rows.rows });
   }));
 
   app.post('/api/auth/login', asyncRoute(async (req, res) => {
@@ -275,9 +266,12 @@ function buildApp(db) {
       can_act_as: isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId,
       can_configure_movements: isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId,
       can_surprise_check: canConductSurprise(req.user),
-      can_assign_surprise: req.user.role === 'BRANCH_ADMINISTRATOR',
+      branch_id: req.user.branchId,
+      can_assign_surprise: req.user.role === 'BRANCH_ADMINISTRATOR'
+        || (isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId),
       can_manage_checks: isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId,
-      can_audit: req.user.role === 'AUDITOR',
+      can_audit: req.user.role === 'AUDITOR'
+        || (isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId),
       can_vault_sheet: deskCanPost(req.user),
       acting_as: Boolean(req.user.actorUserId),
       actor_name: req.user.actorName,
@@ -367,7 +361,7 @@ function buildApp(db) {
   }));
 
   app.get('/api/books', guard, asyncRoute(async (req, res) => {
-    res.json(await prepareDesk(db, req.user, new Date(), req.query.date || null));
+    res.json(await prepareDesk(db, req.user, deskNow(), req.query.date || null));
   }));
 
   app.get('/api/rotation', guard, asyncRoute(async (req, res) => {
@@ -751,12 +745,20 @@ function buildApp(db) {
   }));
 
   if (process.env.ENABLE_CORE_BANK_STUB === 'true') {
-    app.get('/mock/corebank/v1/position/:branchId', asyncRoute(async (req, res) => {
+    app.get('/mock/corebank/v1/position/:branchId', guard, asyncRoute(async (req, res) => {
+      const branchId = Number(req.params.branchId);
+      const bookId = Number(req.query.book_id);
+      if (!Number.isInteger(branchId) || !Number.isInteger(bookId)) {
+        throw new VaultError('NOT_FOUND', 'That position does not exist', 404);
+      }
+      if (req.user.branchId !== null && Number(req.user.branchId) !== branchId) {
+        throw new VaultError('ACCESS_DENIED', 'Access denied', 403);
+      }
       const rows = await db.query(
         `SELECT currency_code, amount_minor
          FROM mock_core_positions
          WHERE branch_id = $1 AND book_id = $2 AND tenant_id = $3`,
-        [req.params.branchId, req.query.book_id, req.query.tenant_id],
+        [branchId, bookId, req.user.tenantId],
       );
       const outstanding = {};
       for (const row of rows.rows) {
@@ -793,7 +795,32 @@ async function latestBookDate(db, tenantId, branchId) {
   return result.rows[0] ? result.rows[0].business_date : null;
 }
 
-async function prepareDesk(db, user, now = new Date(), requestedDate = null) {
+async function latestClosedDate(db, tenantId, branchId) {
+  const result = await db.query(
+    `SELECT business_date::text AS business_date
+     FROM branch_vault_books
+     WHERE tenant_id = $1 AND branch_id = $2
+     GROUP BY business_date
+     HAVING COUNT(*) = 3 AND bool_and(status = 'BALANCED_CLOSED')
+     ORDER BY business_date DESC
+     LIMIT 1`,
+    [tenantId, branchId],
+  );
+  return result.rows[0] ? result.rows[0].business_date : null;
+}
+
+async function dateIsFullyClosed(db, tenantId, branchId, businessDate) {
+  const result = await db.query(
+    `SELECT COUNT(*)::int AS books, bool_and(status = 'BALANCED_CLOSED') AS closed
+     FROM branch_vault_books
+     WHERE tenant_id = $1 AND branch_id = $2 AND business_date = $3`,
+    [tenantId, branchId, businessDate],
+  );
+  const row = result.rows[0];
+  return Boolean(row && row.books === 3 && row.closed);
+}
+
+async function prepareDesk(db, user, now = deskNow(), requestedDate = null) {
   const tenantId = user.tenantId;
   const branchId = user.branchId;
   if (!branchId) throw new VaultError('NO_BRANCH', 'This profile is not attached to a branch', 409);
@@ -808,10 +835,19 @@ async function prepareDesk(db, user, now = new Date(), requestedDate = null) {
   if (morning && gate.open && !requestedDate) {
     await carryForwardBranch(db, tenantId, branchId, now, options);
   }
-  const businessDate = requestedDate || morning || await latestBookDate(db, tenantId, branchId);
+  const master = isMasterAdmin({ work_email: user.email }) && !user.actorUserId;
   const deskOpen = !morning || gate.open;
+  let businessDate = requestedDate || morning || await latestBookDate(db, tenantId, branchId);
+  if (master && !deskOpen) {
+    const requestedClosed = requestedDate
+      ? await dateIsFullyClosed(db, tenantId, branchId, requestedDate)
+      : false;
+    businessDate = requestedClosed
+      ? requestedDate
+      : await latestClosedDate(db, tenantId, branchId);
+  }
   const power = user.role ? powers(await describeRole(db, tenantId, user.role)) : powers(null);
-  let books = !businessDate || !deskOpen
+  let books = !businessDate || (!deskOpen && !master)
     ? []
     : await listBooks(db, tenantId, businessDate);
   if (power.branchScoped) {
@@ -826,9 +862,13 @@ async function prepareDesk(db, user, now = new Date(), requestedDate = null) {
   if (!isBusinessDay(today, options) && !calendar.nonWorking) {
     calendar.nonWorking = { date: today, name: 'Not a trading day' };
   }
-  const dates = await listBookDates(db, tenantId, branchId);
+  let dates = await listBookDates(db, tenantId, branchId);
+  if (master && !deskOpen) {
+    dates = dates.filter((row) => row.status === 'BALANCED_CLOSED');
+  }
   return {
     businessDate,
+    gatedDate: morning,
     deskOpen,
     missingPosts: gate.missing,
     books,
@@ -850,19 +890,27 @@ async function runMorning(db) {
   }
 }
 
+async function ensureSchema(db) {
+  const found = await db.query(`SELECT to_regclass('public.bank_tenants') AS rel`);
+  if (found.rows[0].rel) return;
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'database', 'init.sql'), 'utf8');
+  await db.query(sql);
+}
+
 async function start() {
   if ((process.env.JWT_SECRET || '').length < 32) {
     throw new Error('JWT_SECRET must be at least 32 characters');
   }
   const db = createPool();
   await waitForDb(db);
+  await ensureSchema(db);
   await syncCatalogue(db);
   await ensureCeremony(db);
   if (process.env.SEED_DEMO_DATA === 'true') {
     await seedDemo(db);
     await ensureMasterAdmin(db);
     await ensureKnownBranches(db);
-    const working = await ensureWorkingBooks(db);
+    const working = await ensureWorkingBooks(db, deskNow());
     console.log(JSON.stringify({ event: 'working_books', ...working }));
   }
   const app = buildApp(db);

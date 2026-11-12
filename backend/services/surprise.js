@@ -49,8 +49,14 @@ function assertCheckAdmin(user) {
   }
 }
 
+function canAssignSurprise(user) {
+  if (!user) return false;
+  if (user.role === 'BRANCH_ADMINISTRATOR') return true;
+  return isMasterAdmin({ work_email: user.email }) && !user.actorUserId;
+}
+
 function assertAssigner(user) {
-  if (!user || user.role !== 'BRANCH_ADMINISTRATOR') {
+  if (!canAssignSurprise(user)) {
     throw new VaultError(
       'WRONG_ROLE',
       'A branch administrator assigns the surprise cash check',
@@ -504,9 +510,9 @@ async function surpriseAssignmentView(db, user, businessDate) {
     business_date: businessDate,
     branch_id: branchId,
     assignment,
-    can_assign: user.role === 'BRANCH_ADMINISTRATOR',
+    can_assign: canAssignSurprise(user),
     can_record: canConductSurprise(user) || Boolean(isAssignee),
-    candidates: user.role === 'BRANCH_ADMINISTRATOR' ? candidates : [],
+    candidates: canAssignSurprise(user) ? candidates : [],
   };
 }
 

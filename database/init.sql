@@ -973,16 +973,18 @@ FOR EACH ROW
 EXECUTE FUNCTION nodevault_verify_entry_arithmetic();
 
 -- Least privilege for the API role. Triggers still reject mutations if a grant is widened later.
-DO $$
+-- A database with no nodevault_app role (the hosted demo connects as the owner) skips these grants.
+DO $nodevault_grants$
 BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nodevault_app') THEN
+    RAISE NOTICE 'nodevault_app is absent; skipping API role grants';
+    RETURN;
+  END IF;
+
   EXECUTE format('GRANT CONNECT ON DATABASE %I TO nodevault_app', current_database());
-END
-$$;
-
-GRANT USAGE ON SCHEMA public TO nodevault_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nodevault_app;
-
-GRANT SELECT, INSERT ON bank_tenants, branches, nodevault_users, desk_roles, system_control,
+  EXECUTE $g$GRANT USAGE ON SCHEMA public TO nodevault_app$g$;
+  EXECUTE $g$GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nodevault_app$g$;
+  EXECUTE $g$GRANT SELECT, INSERT ON bank_tenants, branches, nodevault_users, desk_roles, system_control,
   weekly_coordinator_assignments, rotation_schedules, handover_logs, post_assignments,
   movement_options, book_narrations, surprise_checks, surprise_check_books, surprise_assignments,
   non_working_closures, non_working_closure_branches, non_working_closure_cancellations,
@@ -991,53 +993,53 @@ GRANT SELECT, INSERT ON bank_tenants, branches, nodevault_users, desk_roles, sys
   ledger_amount_cells, break_glass_sessions, audit_events, dispatch_outbox,
   mock_core_positions, mock_core_transactions,
   auditor_branches, audit_line_marks, audit_signoffs, vault_sheets, print_jobs
-  TO nodevault_app;
-
-GRANT UPDATE (failed_login_count, locked_until) ON nodevault_users TO nodevault_app;
-GRANT UPDATE (
+  TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (failed_login_count, locked_until) ON nodevault_users TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (
   full_legal_name, branch_id, system_role, employee_id, two_letter_initials,
   password_hash, closing_pin_hash, is_active, current_audit_branch_id
-) ON nodevault_users TO nodevault_app;
-GRANT UPDATE (display_name) ON desk_roles TO nodevault_app;
-GRANT DELETE ON desk_roles TO nodevault_app;
-GRANT UPDATE (period_end) ON post_assignments TO nodevault_app;
-GRANT UPDATE (bank_name, logo_label, logo_file) ON bank_tenants TO nodevault_app;
-GRANT UPDATE (label, flow_direction, sort_order, is_active) ON movement_options TO nodevault_app;
-GRANT UPDATE (branch_code, branch_name, province, location_name, is_active, permanently_closed, printer_target) ON branches TO nodevault_app;
-GRANT UPDATE (pending_final_comment_at) ON auditor_branches TO nodevault_app;
-GRANT DELETE ON auditor_branches TO nodevault_app;
-GRANT UPDATE (mark_status, comment, core_ref_kind, marked_by, marked_at) ON audit_line_marks TO nodevault_app;
-GRANT UPDATE (printed_at, line_ids) ON vault_sheets TO nodevault_app;
-GRANT UPDATE (status, attempts, last_error, sent_at, printer_target) ON print_jobs TO nodevault_app;
-GRANT UPDATE (status, closed_at) ON branch_vault_books TO nodevault_app;
-GRANT UPDATE (initialized_at, it_admin_frozen, entra_enabled) ON system_control TO nodevault_app;
-GRANT UPDATE (status, attempts, last_error, updated_at) ON dispatch_outbox TO nodevault_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON mock_core_positions TO nodevault_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON mock_core_transactions TO nodevault_app;
-REVOKE UPDATE, DELETE, TRUNCATE ON audit_signoffs FROM nodevault_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON denomination_catalogue TO nodevault_app;
-
-REVOKE UPDATE, DELETE, TRUNCATE ON vault_denomination_matrix_ledger FROM nodevault_app;
-REVOKE UPDATE, DELETE, TRUNCATE ON ledger_amount_cells FROM nodevault_app;
-GRANT UPDATE (
+) ON nodevault_users TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (display_name) ON desk_roles TO nodevault_app$g$;
+  EXECUTE $g$GRANT DELETE ON desk_roles TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (period_end) ON post_assignments TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (bank_name, logo_label, logo_file) ON bank_tenants TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (label, flow_direction, sort_order, is_active) ON movement_options TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (branch_code, branch_name, province, location_name, is_active, permanently_closed, printer_target) ON branches TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (pending_final_comment_at) ON auditor_branches TO nodevault_app$g$;
+  EXECUTE $g$GRANT DELETE ON auditor_branches TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (mark_status, comment, core_ref_kind, marked_by, marked_at) ON audit_line_marks TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (printed_at, line_ids) ON vault_sheets TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (status, attempts, last_error, sent_at, printer_target) ON print_jobs TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (status, closed_at) ON branch_vault_books TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (initialized_at, it_admin_frozen, entra_enabled) ON system_control TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (status, attempts, last_error, updated_at) ON dispatch_outbox TO nodevault_app$g$;
+  EXECUTE $g$GRANT SELECT, INSERT, UPDATE, DELETE ON mock_core_positions TO nodevault_app$g$;
+  EXECUTE $g$GRANT SELECT, INSERT, UPDATE, DELETE ON mock_core_transactions TO nodevault_app$g$;
+  EXECUTE $g$REVOKE UPDATE, DELETE, TRUNCATE ON audit_signoffs FROM nodevault_app$g$;
+  EXECUTE $g$GRANT SELECT, INSERT, UPDATE, DELETE ON denomination_catalogue TO nodevault_app$g$;
+  EXECUTE $g$REVOKE UPDATE, DELETE, TRUNCATE ON vault_denomination_matrix_ledger FROM nodevault_app$g$;
+  EXECUTE $g$REVOKE UPDATE, DELETE, TRUNCATE ON ledger_amount_cells FROM nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (
   accounting_label, line_reference, flow_direction,
   custodian_one_initials, custodian_two_initials, teller_coord_initials
-) ON vault_denomination_matrix_ledger TO nodevault_app;
-GRANT UPDATE (amount_minor) ON ledger_amount_cells TO nodevault_app;
-REVOKE UPDATE, DELETE, TRUNCATE ON audit_events FROM nodevault_app;
-REVOKE DELETE, TRUNCATE ON branch_vault_books FROM nodevault_app;
-REVOKE DELETE, TRUNCATE ON audit_events FROM nodevault_app;
-REVOKE UPDATE, DELETE, TRUNCATE ON handover_logs FROM nodevault_app;
-REVOKE UPDATE, DELETE, TRUNCATE ON book_narrations FROM nodevault_app;
-GRANT UPDATE (archived_at) ON surprise_checks TO nodevault_app;
-GRANT DELETE ON surprise_checks TO nodevault_app;
-GRANT DELETE ON surprise_check_books TO nodevault_app;
-GRANT UPDATE (assignee_user_id, assigned_by_user_id, created_at) ON surprise_assignments TO nodevault_app;
-GRANT DELETE ON surprise_assignments TO nodevault_app;
-REVOKE TRUNCATE ON surprise_checks FROM nodevault_app;
-REVOKE UPDATE, TRUNCATE ON surprise_check_books FROM nodevault_app;
-REVOKE UPDATE, DELETE, TRUNCATE ON non_working_closures FROM nodevault_app;
-REVOKE UPDATE, DELETE, TRUNCATE ON non_working_closure_branches FROM nodevault_app;
-REVOKE UPDATE, DELETE, TRUNCATE ON non_working_closure_cancellations FROM nodevault_app;
-REVOKE UPDATE, DELETE, TRUNCATE ON gazetted_holidays FROM nodevault_app;
-REVOKE UPDATE, DELETE, TRUNCATE ON gazetted_holiday_cancellations FROM nodevault_app;
+) ON vault_denomination_matrix_ledger TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (amount_minor) ON ledger_amount_cells TO nodevault_app$g$;
+  EXECUTE $g$REVOKE UPDATE, DELETE, TRUNCATE ON audit_events FROM nodevault_app$g$;
+  EXECUTE $g$REVOKE DELETE, TRUNCATE ON branch_vault_books FROM nodevault_app$g$;
+  EXECUTE $g$REVOKE DELETE, TRUNCATE ON audit_events FROM nodevault_app$g$;
+  EXECUTE $g$REVOKE UPDATE, DELETE, TRUNCATE ON handover_logs FROM nodevault_app$g$;
+  EXECUTE $g$REVOKE UPDATE, DELETE, TRUNCATE ON book_narrations FROM nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (archived_at) ON surprise_checks TO nodevault_app$g$;
+  EXECUTE $g$GRANT DELETE ON surprise_checks TO nodevault_app$g$;
+  EXECUTE $g$GRANT DELETE ON surprise_check_books TO nodevault_app$g$;
+  EXECUTE $g$GRANT UPDATE (assignee_user_id, assigned_by_user_id, created_at) ON surprise_assignments TO nodevault_app$g$;
+  EXECUTE $g$GRANT DELETE ON surprise_assignments TO nodevault_app$g$;
+  EXECUTE $g$REVOKE TRUNCATE ON surprise_checks FROM nodevault_app$g$;
+  EXECUTE $g$REVOKE UPDATE, TRUNCATE ON surprise_check_books FROM nodevault_app$g$;
+  EXECUTE $g$REVOKE UPDATE, DELETE, TRUNCATE ON non_working_closures FROM nodevault_app$g$;
+  EXECUTE $g$REVOKE UPDATE, DELETE, TRUNCATE ON non_working_closure_branches FROM nodevault_app$g$;
+  EXECUTE $g$REVOKE UPDATE, DELETE, TRUNCATE ON non_working_closure_cancellations FROM nodevault_app$g$;
+  EXECUTE $g$REVOKE UPDATE, DELETE, TRUNCATE ON gazetted_holidays FROM nodevault_app$g$;
+  EXECUTE $g$REVOKE UPDATE, DELETE, TRUNCATE ON gazetted_holiday_cancellations FROM nodevault_app$g$;
+END
+$nodevault_grants$;
