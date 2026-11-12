@@ -22,6 +22,6 @@ fill('CORE_BANK_MODE', 'mock');
 fill('PRINTER_MODE', 'stub');
 fill('MAIL_MODE', 'stub');
 fill('CLOSE_PRINT_FAILURE', 'queue');
-fill('DESK_NOW', '2026-10-03T10:00:00+02:00');
+fill('DESK_NOW', '2026-10-05T10:00:00+02:00');
 
 require(path.join(__dirname, '..', 'backend', 'server.js'));

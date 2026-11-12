@@ -266,9 +266,12 @@ function buildApp(db) {
       can_act_as: isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId,
       can_configure_movements: isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId,
       can_surprise_check: canConductSurprise(req.user),
-      can_assign_surprise: req.user.role === 'BRANCH_ADMINISTRATOR',
+      branch_id: req.user.branchId,
+      can_assign_surprise: req.user.role === 'BRANCH_ADMINISTRATOR'
+        || (isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId),
       can_manage_checks: isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId,
-      can_audit: req.user.role === 'AUDITOR',
+      can_audit: req.user.role === 'AUDITOR'
+        || (isMasterAdmin({ work_email: req.user.email }) && !req.user.actorUserId),
       can_vault_sheet: deskCanPost(req.user),
       acting_as: Boolean(req.user.actorUserId),
       actor_name: req.user.actorName,
@@ -792,6 +795,31 @@ async function latestBookDate(db, tenantId, branchId) {
   return result.rows[0] ? result.rows[0].business_date : null;
 }
 
+async function latestClosedDate(db, tenantId, branchId) {
+  const result = await db.query(
+    `SELECT business_date::text AS business_date
+     FROM branch_vault_books
+     WHERE tenant_id = $1 AND branch_id = $2
+     GROUP BY business_date
+     HAVING COUNT(*) = 3 AND bool_and(status = 'BALANCED_CLOSED')
+     ORDER BY business_date DESC
+     LIMIT 1`,
+    [tenantId, branchId],
+  );
+  return result.rows[0] ? result.rows[0].business_date : null;
+}
+
+async function dateIsFullyClosed(db, tenantId, branchId, businessDate) {
+  const result = await db.query(
+    `SELECT COUNT(*)::int AS books, bool_and(status = 'BALANCED_CLOSED') AS closed
+     FROM branch_vault_books
+     WHERE tenant_id = $1 AND branch_id = $2 AND business_date = $3`,
+    [tenantId, branchId, businessDate],
+  );
+  const row = result.rows[0];
+  return Boolean(row && row.books === 3 && row.closed);
+}
+
 async function prepareDesk(db, user, now = deskNow(), requestedDate = null) {
   const tenantId = user.tenantId;
   const branchId = user.branchId;
@@ -807,10 +835,19 @@ async function prepareDesk(db, user, now = deskNow(), requestedDate = null) {
   if (morning && gate.open && !requestedDate) {
     await carryForwardBranch(db, tenantId, branchId, now, options);
   }
-  const businessDate = requestedDate || morning || await latestBookDate(db, tenantId, branchId);
+  const master = isMasterAdmin({ work_email: user.email }) && !user.actorUserId;
   const deskOpen = !morning || gate.open;
+  let businessDate = requestedDate || morning || await latestBookDate(db, tenantId, branchId);
+  if (master && !deskOpen) {
+    const requestedClosed = requestedDate
+      ? await dateIsFullyClosed(db, tenantId, branchId, requestedDate)
+      : false;
+    businessDate = requestedClosed
+      ? requestedDate
+      : await latestClosedDate(db, tenantId, branchId);
+  }
   const power = user.role ? powers(await describeRole(db, tenantId, user.role)) : powers(null);
-  let books = !businessDate || !deskOpen
+  let books = !businessDate || (!deskOpen && !master)
     ? []
     : await listBooks(db, tenantId, businessDate);
   if (power.branchScoped) {
@@ -825,9 +862,13 @@ async function prepareDesk(db, user, now = deskNow(), requestedDate = null) {
   if (!isBusinessDay(today, options) && !calendar.nonWorking) {
     calendar.nonWorking = { date: today, name: 'Not a trading day' };
   }
-  const dates = await listBookDates(db, tenantId, branchId);
+  let dates = await listBookDates(db, tenantId, branchId);
+  if (master && !deskOpen) {
+    dates = dates.filter((row) => row.status === 'BALANCED_CLOSED');
+  }
   return {
     businessDate,
+    gatedDate: morning,
     deskOpen,
     missingPosts: gate.missing,
     books,

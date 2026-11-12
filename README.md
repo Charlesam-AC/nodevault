@@ -173,7 +173,7 @@ Copy `.env.example`. Do not commit `.env`.
 | `DEMO_PASSWORD` | Shared demo directory password, hashed into `password_hash`. Not the closing PIN |
 | `LOCAL_LOGIN_MAX_FAILURES` / `LOCAL_LOGIN_LOCKOUT_MINUTES` | Lock an account after repeated wrong passwords |
 | `BUSINESS_TIMEZONE` / `BUSINESS_DAY_START` | When the next business morning begins. Default Africa/Lusaka 08:00 |
-| `DESK_NOW` | ISO timestamp the desk uses instead of the wall clock. Empty follows the real time. `2026-10-03T10:00:00+02:00` opens the seeded Saturday morning |
+| `DESK_NOW` | ISO timestamp the desk uses instead of the wall clock. Empty follows the real time. `2026-10-05T10:00:00+02:00` opens Monday 5 October, carried forward from the locked Saturday sample |
 | `TRADING_WEEKDAYS` | Days the desk opens. Default `Mon,Tue,Wed,Thu,Fri,Sat`. Sunday is closed unless named here |
 | `BANK_HOLIDAYS` | Extra comma-separated dates, added on top of the Zambian public-holiday calendar |
 | `CORE_BANK_MODE` | `mock` reads `mock_core_positions`. `http` GETs `${CORE_BANK_API_URL}/v1/position/:branchId` |

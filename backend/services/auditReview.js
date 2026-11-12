@@ -203,7 +203,14 @@ async function setCurrentBranch(db, user, branchId) {
   return { current_audit_branch_id: id };
 }
 
+function masterOnBranch(user, branchId) {
+  return isMasterAdmin({ work_email: user.email })
+    && !user.actorUserId
+    && Number(user.branchId) === Number(branchId);
+}
+
 async function assertCurrent(db, user, branchId) {
+  if (masterOnBranch(user, branchId)) return;
   assertAuditor(user);
   const id = Number(branchId);
   await assertAssigned(db, user, id);
@@ -533,7 +540,8 @@ async function signOff(db, user, branchId, body, deps = {}) {
 }
 
 async function reprintSignoff(db, user, signoffId, deps = {}) {
-  assertAuditor(user);
+  const master = isMasterAdmin({ work_email: user.email }) && !user.actorUserId;
+  if (!master) assertAuditor(user);
   const result = await db.query(
     `SELECT signoff_id, branch_id, range_from::text AS range_from, range_to::text AS range_to,
             end_comment, full_legal_name, employee_id
@@ -542,7 +550,9 @@ async function reprintSignoff(db, user, signoffId, deps = {}) {
   );
   if (!result.rowCount) throw new VaultError('NOT_FOUND', 'That audit sheet is not on this bank', 404);
   const signoff = result.rows[0];
-  await assertAssigned(db, user, signoff.branch_id);
+  if (!masterOnBranch(user, signoff.branch_id)) {
+    await assertAssigned(db, user, signoff.branch_id);
+  }
   signoff.signoff_id = Number(signoff.signoff_id);
   signoff.branch_id = Number(signoff.branch_id);
   return printSignoffSheet(db, user.tenantId, signoff, deps);
