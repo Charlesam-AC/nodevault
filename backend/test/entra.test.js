@@ -71,8 +71,13 @@ test('the IT super admin can turn Microsoft Entra off and on', async () => {
   await createDesk(pinHash);
   const { applicationPool, adminPool } = pools();
   await adminPool.query(
-    `UPDATE nodevault_users SET password_hash = $1 WHERE work_email = $2`,
-    [passwordHash, 'charles.amulike@demo-bank.example'],
+    `UPDATE nodevault_users SET password_hash = $1
+     WHERE work_email = ANY($2::text[])`,
+    [passwordHash, [
+      'it.admin@demo-bank.example',
+      'charles.amulike@demo-bank.example',
+      'custodian.two@demo-bank.example',
+    ]],
   );
 
   const custodian = await request(applicationPool, {
@@ -90,14 +95,13 @@ test('the IT super admin can turn Microsoft Entra off and on', async () => {
   assert.equal(refused.status, 403);
   assert.equal(refused.body.error, 'WRONG_ROLE');
 
-  const assertion = process.env.MOCK_ENTRA_ASSERTION;
   const opened = await openBreakGlass(applicationPool, {
     admin_email: 'it.admin@demo-bank.example',
-    admin_assertion: assertion,
+    admin_password: PASSWORD,
     custodian_one_email: 'charles.amulike@demo-bank.example',
-    custodian_one_assertion: assertion,
+    custodian_one_password: PASSWORD,
     custodian_two_email: 'custodian.two@demo-bank.example',
-    custodian_two_assertion: assertion,
+    custodian_two_password: PASSWORD,
   });
 
   const turnedOff = await request(applicationPool, {
@@ -115,10 +119,10 @@ test('the IT super admin can turn Microsoft Entra off and on', async () => {
   const entra = await request(applicationPool, {
     method: 'POST',
     path: '/api/auth/login',
-    body: { email: 'charles.amulike@demo-bank.example', assertion },
+    body: { email: 'charles.amulike@demo-bank.example', assertion: 'change-me-entra-assertion' },
   });
-  assert.equal(entra.status, 403);
-  assert.equal(entra.body.error, 'ENTRA_DISABLED');
+  assert.equal(entra.status, 503);
+  assert.equal(entra.body.error, 'ENTRA_UNAVAILABLE');
 
   const passwordStillWorks = await request(applicationPool, {
     method: 'POST',
@@ -129,11 +133,11 @@ test('the IT super admin can turn Microsoft Entra off and on', async () => {
 
   const emergency = await openBreakGlass(applicationPool, {
     admin_email: 'it.admin@demo-bank.example',
-    admin_assertion: assertion,
+    admin_password: PASSWORD,
     custodian_one_email: 'charles.amulike@demo-bank.example',
-    custodian_one_assertion: assertion,
+    custodian_one_password: PASSWORD,
     custodian_two_email: 'custodian.two@demo-bank.example',
-    custodian_two_assertion: assertion,
+    custodian_two_password: PASSWORD,
   });
   assert.ok(emergency.token);
 
@@ -160,9 +164,10 @@ test('the IT super admin can turn Microsoft Entra off and on', async () => {
   const restored = await request(applicationPool, {
     method: 'POST',
     path: '/api/auth/login',
-    body: { email: 'charles.amulike@demo-bank.example', assertion },
+    body: { email: 'charles.amulike@demo-bank.example', assertion: 'change-me-entra-assertion' },
   });
-  assert.equal(restored.status, 200);
+  assert.equal(restored.status, 503);
+  assert.equal(restored.body.error, 'ENTRA_UNAVAILABLE');
 
   const audit = await applicationPool.query(
     `SELECT event_type FROM audit_events

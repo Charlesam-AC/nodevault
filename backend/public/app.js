@@ -1688,8 +1688,8 @@ async function submitSurprise(event) {
 
 function entraCopy(enabled) {
   return enabled
-    ? 'Directory sign-in is on. Turn it off to allow manual desk passwords. Break-glass requires manual override.'
-    : 'Directory sign-in is off. Manual desk passwords are the door. Break-glass still requires the directory assertion.';
+    ? 'Directory sign-in is on. This deployment still refuses an unsigned Entra assertion. Break-glass uses each person\'s directory password.'
+    : 'Directory sign-in is off. Desk passwords are the door. Break-glass uses each person\'s directory password.';
 }
 
 async function renderEntraAdmin() {
@@ -2940,11 +2940,11 @@ document.getElementById('glass-form').addEventListener('submit', async (event) =
       method: 'POST',
       body: JSON.stringify({
         admin_email: document.getElementById('glass-admin-email').value,
-        admin_assertion: document.getElementById('glass-admin-assertion').value,
+        admin_password: document.getElementById('glass-admin-password').value,
         custodian_one_email: document.getElementById('glass-c1-email').value,
-        custodian_one_assertion: document.getElementById('glass-c1-assertion').value,
+        custodian_one_password: document.getElementById('glass-c1-password').value,
         custodian_two_email: document.getElementById('glass-c2-email').value,
-        custodian_two_assertion: document.getElementById('glass-c2-assertion').value,
+        custodian_two_password: document.getElementById('glass-c2-password').value,
       }),
     });
     state.token = result.token;
@@ -3125,7 +3125,7 @@ window.addEventListener('resize', syncSuspendedSheet);
 function applyPublicConfig(config) {
   const passwordForm = document.getElementById('password-form');
   const entraFold = document.getElementById('entra-fold');
-  const entraOn = config.entraEnabled !== false;
+  const entraOn = config.entraLogin === true && config.entraEnabled !== false;
   passwordForm.hidden = !config.localLogin;
   entraFold.hidden = !entraOn;
   entraFold.open = entraOn && !config.localLogin;

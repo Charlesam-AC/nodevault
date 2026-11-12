@@ -15,8 +15,7 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
 fill('SEED_DEMO_DATA', 'true');
 fill('ENABLE_LOCAL_LOGIN', 'true');
 fill('AUTH_MODE', 'both');
-fill('ENTRA_MODE', 'mock');
-fill('MOCK_ENTRA_ASSERTION', 'change-me-entra-assertion');
+fill('ENTRA_MODE', 'entra');
 fill('DEMO_PASSWORD', 'Vault-demo-2026');
 fill('DEMO_CLOSING_PIN', '135790');
 fill('MASTER_ADMIN_PASSWORD', 'NodeVault-admin-2026');

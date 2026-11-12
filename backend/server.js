@@ -201,6 +201,7 @@ function buildApp(db) {
       enforcedDomain: process.env.ENFORCED_CORPORATE_DOMAIN || '',
       authMode: process.env.AUTH_MODE || 'both',
       localLogin: localLoginEnabled(),
+      entraLogin: false,
       entraEnabled: await readEntraEnabled(db),
     });
   }));
@@ -214,18 +215,6 @@ function buildApp(db) {
 
   app.put('/api/auth/entra', guard, asyncRoute(async (req, res) => {
     res.json(await setEntraEnabled(db, req.user, req.body.enabled));
-  }));
-
-  app.get('/api/auth/demo-directory', asyncRoute(async (_req, res) => {
-    if ((process.env.ENTRA_MODE || 'mock') !== 'mock' || process.env.SEED_DEMO_DATA !== 'true') {
-      throw new VaultError('NOT_FOUND', 'No demo directory is published', 404);
-    }
-    const rows = await db.query(
-      `SELECT work_email, full_legal_name, system_role, two_letter_initials, employee_id
-       FROM nodevault_users
-       ORDER BY user_id`,
-    );
-    res.json({ users: rows.rows });
   }));
 
   app.post('/api/auth/login', asyncRoute(async (req, res) => {

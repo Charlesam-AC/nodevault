@@ -1,16 +1,15 @@
 const { VaultError } = require('./errors');
-const { authenticateCorporateIdentity, signSession } = require('../middleware/auth');
+const { proveDirectoryPassword, signSession } = require('../middleware/auth');
 const { recordAudit } = require('./audit');
 
 const WINDOW_MS = 60 * 60 * 1000;
 
 async function openBreakGlass(db, body, deps = {}) {
   const now = deps.now ? deps.now() : new Date();
-  const admin = await authenticateCorporateIdentity(db, {
+  const admin = await proveDirectoryPassword(db, {
     email: body.admin_email,
-    assertion: body.admin_assertion,
+    password: body.admin_password,
     allowFrozenAdmin: true,
-    forBreakGlass: true,
   });
   if (admin.system_role !== 'IT_SUPER_ADMIN') {
     throw new VaultError('WRONG_ROLE', 'Break-glass is for the IT super admin', 403);
@@ -27,15 +26,13 @@ async function openBreakGlass(db, body, deps = {}) {
   if (emails[0] === emails[1] || emails.includes(admin.work_email)) {
     throw new VaultError('DUPLICATE_SIGNATORY', 'Both vault custodians must be distinct people', 400);
   }
-  const c1 = await authenticateCorporateIdentity(db, {
+  const c1 = await proveDirectoryPassword(db, {
     email: emails[0],
-    assertion: body.custodian_one_assertion,
-    forBreakGlass: true,
+    password: body.custodian_one_password,
   });
-  const c2 = await authenticateCorporateIdentity(db, {
+  const c2 = await proveDirectoryPassword(db, {
     email: emails[1],
-    assertion: body.custodian_two_assertion,
-    forBreakGlass: true,
+    password: body.custodian_two_password,
   });
   for (const custodian of [c1, c2]) {
     if (custodian.system_role !== 'VAULT_CUSTODIAN' || !custodian.is_active) {
