@@ -4,6 +4,17 @@ const { Pool, types } = require('pg');
 types.setTypeParser(1082, (value) => value);
 
 function createPool(overrides = {}) {
+  const connectionString = overrides.connectionString
+    || (overrides.host || overrides.user || process.env.DB_HOST || process.env.DB_USER
+      ? ''
+      : (process.env.DATABASE_URL || ''));
+  if (connectionString) {
+    return new Pool({
+      connectionString,
+      max: overrides.max || 10,
+      connectionTimeoutMillis: overrides.connectionTimeoutMillis || 8000,
+    });
+  }
   return new Pool({
     host: overrides.host || process.env.DB_HOST || '127.0.0.1',
     port: Number(overrides.port || process.env.DB_PORT || 5432),

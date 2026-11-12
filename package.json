@@ -1,0 +1,12 @@
+{
+  "name": "nodevault",
+  "private": true,
+  "description": "NodeVault paperless treasury desk",
+  "scripts": {
+    "build": "npm ci --prefix backend && node scripts/migrate.mjs",
+    "start": "node scripts/boot.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

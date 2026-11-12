@@ -1,8 +1,10 @@
+const fs = require('fs');
 const path = require('path');
 const express = require('express');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const { createPool, waitForDb } = require('./db');
+const { deskNow } = require('./services/clock');
 const { VaultError } = require('./services/errors');
 const { syncCatalogue } = require('./services/catalogue');
 const { seedDemo, ensureMasterAdmin, ensureCeremony } = require('./services/seed');
@@ -367,7 +369,7 @@ function buildApp(db) {
   }));
 
   app.get('/api/books', guard, asyncRoute(async (req, res) => {
-    res.json(await prepareDesk(db, req.user, new Date(), req.query.date || null));
+    res.json(await prepareDesk(db, req.user, deskNow(), req.query.date || null));
   }));
 
   app.get('/api/rotation', guard, asyncRoute(async (req, res) => {
@@ -793,7 +795,7 @@ async function latestBookDate(db, tenantId, branchId) {
   return result.rows[0] ? result.rows[0].business_date : null;
 }
 
-async function prepareDesk(db, user, now = new Date(), requestedDate = null) {
+async function prepareDesk(db, user, now = deskNow(), requestedDate = null) {
   const tenantId = user.tenantId;
   const branchId = user.branchId;
   if (!branchId) throw new VaultError('NO_BRANCH', 'This profile is not attached to a branch', 409);
@@ -850,19 +852,27 @@ async function runMorning(db) {
   }
 }
 
+async function ensureSchema(db) {
+  const found = await db.query(`SELECT to_regclass('public.bank_tenants') AS rel`);
+  if (found.rows[0].rel) return;
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'database', 'init.sql'), 'utf8');
+  await db.query(sql);
+}
+
 async function start() {
   if ((process.env.JWT_SECRET || '').length < 32) {
     throw new Error('JWT_SECRET must be at least 32 characters');
   }
   const db = createPool();
   await waitForDb(db);
+  await ensureSchema(db);
   await syncCatalogue(db);
   await ensureCeremony(db);
   if (process.env.SEED_DEMO_DATA === 'true') {
     await seedDemo(db);
     await ensureMasterAdmin(db);
     await ensureKnownBranches(db);
-    const working = await ensureWorkingBooks(db);
+    const working = await ensureWorkingBooks(db, deskNow());
     console.log(JSON.stringify({ event: 'working_books', ...working }));
   }
   const app = buildApp(db);
