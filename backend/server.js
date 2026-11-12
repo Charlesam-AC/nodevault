@@ -742,12 +742,20 @@ function buildApp(db) {
   }));
 
   if (process.env.ENABLE_CORE_BANK_STUB === 'true') {
-    app.get('/mock/corebank/v1/position/:branchId', asyncRoute(async (req, res) => {
+    app.get('/mock/corebank/v1/position/:branchId', guard, asyncRoute(async (req, res) => {
+      const branchId = Number(req.params.branchId);
+      const bookId = Number(req.query.book_id);
+      if (!Number.isInteger(branchId) || !Number.isInteger(bookId)) {
+        throw new VaultError('NOT_FOUND', 'That position does not exist', 404);
+      }
+      if (req.user.branchId !== null && Number(req.user.branchId) !== branchId) {
+        throw new VaultError('ACCESS_DENIED', 'Access denied', 403);
+      }
       const rows = await db.query(
         `SELECT currency_code, amount_minor
          FROM mock_core_positions
          WHERE branch_id = $1 AND book_id = $2 AND tenant_id = $3`,
-        [req.params.branchId, req.query.book_id, req.query.tenant_id],
+        [branchId, bookId, req.user.tenantId],
       );
       const outstanding = {};
       for (const row of rows.rows) {

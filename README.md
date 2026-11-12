@@ -112,7 +112,7 @@ A volume created before directory passwords existed does not have `password_hash
 
 Demo sign-in (only when `SEED_DEMO_DATA=true`):
 
-Password sign-in is on in the sample `.env` (`ENABLE_LOCAL_LOGIN=true` and `AUTH_MODE=both`). Every seeded account uses the same directory password, `Vault-demo-2026` (`DEMO_PASSWORD`). That password is not the closing PIN.
+Password sign-in is on only when `ENABLE_LOCAL_LOGIN=true` and `AUTH_MODE` is not `entra`. Seeded accounts share the directory password you set as `DEMO_PASSWORD`. That password is not the closing PIN. The sample `.env` uses placeholders. Replace them before the desk is reachable. The hosted start does not fill these in and does not seed a bank.
 
 | Role | Email |
 | --- | --- |
@@ -131,12 +131,12 @@ Master admin (created on startup when `SEED_DEMO_DATA=true`):
 | | |
 | --- | --- |
 | Email | `admin@demo-bank.example` (`MASTER_ADMIN_EMAIL`) |
-| Password | `NodeVault-admin-2026` (`MASTER_ADMIN_PASSWORD`) |
+| Password | the value of `MASTER_ADMIN_PASSWORD` in the environment |
 | Role | IT super admin |
 
 This password is not the shared demo password and not the closing PIN. It opens a normal desk session, including the Entra switch. `it.admin@demo-bank.example` stays frozen.
 
-`POST /api/auth/login` does not issue a session. This build refuses unsigned Entra assertions, including a single shared mock secret. The closing PIN is `DEMO_CLOSING_PIN` (`135790` in the sample file). It is not a directory password.
+`POST /api/auth/login` does not issue a session. This build refuses unsigned Entra assertions. The closing PIN is `DEMO_CLOSING_PIN`. It is not a directory password. Neither value is chosen by the hosted start.
 
 Turn password sign-in off for a live Entra deployment by setting both of these, then restarting the API:
 

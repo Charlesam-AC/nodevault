@@ -193,9 +193,9 @@ async function ensureMasterAdmin(db) {
   if (process.env.SEED_DEMO_DATA !== 'true' || !localLoginEnabled()) return { ensured: false };
   const email = String(process.env.MASTER_ADMIN_EMAIL || 'admin@demo-bank.example').trim().toLowerCase();
   if (!email) return { ensured: false };
-  const password = process.env.MASTER_ADMIN_PASSWORD || 'NodeVault-admin-2026';
+  const password = process.env.MASTER_ADMIN_PASSWORD || '';
   if (password.length < 10) {
-    throw new Error('MASTER_ADMIN_PASSWORD must be at least 10 characters');
+    throw new Error('MASTER_ADMIN_PASSWORD must be at least 10 characters when SEED_DEMO_DATA=true');
   }
   const pin = process.env.DEMO_CLOSING_PIN || '';
   if (password === pin) {
